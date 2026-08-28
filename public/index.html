@@ -3,43 +3,56 @@
 <head>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Dominion Arena - Enhanced Visuals</title>
+    <title>Dominion Arena - Fluid Spheres & Rank System</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Tajawal:wght@500;700;900&display=swap" rel="stylesheet"/>
     <style>
-        body { font-family: 'Tajawal', sans-serif; background-color: #06070a; margin: 0; overflow: hidden; }
-        .glass-hud { background: rgba(10, 12, 18, 0.85); backdrop-filter: blur(12px); border: 1px solid rgba(0, 245, 255, 0.2); }
+        body { font-family: 'Tajawal', sans-serif; background-color: #040508; margin: 0; overflow: hidden; }
+        .glass-hud { 
+            background: rgba(8, 10, 16, 0.85); 
+            backdrop-filter: blur(16px); 
+            border: 1px solid rgba(0, 245, 255, 0.25); 
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8);
+        }
+        .rank-badge {
+            background: linear-gradient(135deg, rgba(0, 245, 255, 0.2), rgba(255, 0, 128, 0.2));
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
     </style>
 </head>
 <body class="text-white relative w-screen h-screen">
 
-    <!-- HUD العلوي -->
-    <header class="absolute top-5 left-1/2 -translate-x-1/2 z-30 flex items-center gap-6 glass-hud px-8 py-3 rounded-2xl shadow-2xl">
+    <!-- HUD العلوي للهيمنة -->
+    <header class="absolute top-5 left-1/2 -translate-x-1/2 z-30 flex items-center gap-6 glass-hud px-8 py-3 rounded-2xl">
         <div class="flex items-center gap-3">
-            <span id="dominantFlag" class="text-3xl">🌐</span>
+            <span id="dominantFlag" class="text-3xl animate-pulse">🌐</span>
             <div>
-                <div class="text-[10px] uppercase text-cyan-400 font-bold tracking-widest">الدولة المهيمنة</div>
-                <div id="dominantCountry" class="text-base font-black text-white">جاري الاتصال...</div>
+                <div class="text-[10px] uppercase text-cyan-400 font-bold tracking-widest">الدولة المهيمنة حالياً</div>
+                <div id="dominantCountry" class="text-base font-black text-white">جاري الحساب...</div>
             </div>
         </div>
         <div class="h-8 w-[1px] bg-white/10"></div>
         <div class="flex flex-col items-end">
-            <div class="text-[10px] uppercase text-gray-400 font-bold tracking-widest">حالة الخادم</div>
+            <div class="text-[10px] uppercase text-gray-400 font-bold tracking-widest">حالة خادم Render</div>
             <div id="connectionStatus" class="text-xs font-bold text-emerald-400 flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> متصل بـ Render
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> مباشر
             </div>
         </div>
     </header>
 
-    <!-- لائحة المتصدرين -->
-    <aside class="absolute top-5 right-5 z-30 w-72 glass-hud p-4 rounded-2xl">
-        <div class="flex justify-between items-center mb-3">
-            <h2 class="font-bold text-xs text-cyan-400">قائمة المتصدرين المباشرة</h2>
-            <span class="text-[11px] text-gray-400 font-['Sora']" id="activePlayerCount">0 لاعب</span>
+    <!-- قائمة المتصدرين الجانبية المطورة مع الرتب -->
+    <aside class="absolute top-5 right-5 z-30 w-80 glass-hud p-5 rounded-2xl">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="font-bold text-sm text-cyan-400 flex items-center gap-2">
+                <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 shadow-[0_0_10px_#00f5ff]"></span>
+                عروش الساحين (Leaderboard)
+            </h2>
+            <span class="text-xs text-gray-400 font-['Sora']" id="activePlayerCount">0 محارب</span>
         </div>
-        <div id="leaderboardList" class="space-y-1.5 text-xs"></div>
+        <div id="leaderboardList" class="space-y-2 text-xs"></div>
     </aside>
 
+    <!-- ميدان الرسم الرئيسي -->
     <canvas id="worldCanvas" class="w-full h-full block cursor-grab active:cursor-grabbing"></canvas>
 
 <script>
@@ -55,32 +68,31 @@
     window.addEventListener('resize', resize);
     resize();
 
-    // ضبط الكاميرا بزوم أوضح للرؤية
-    let camera = { x: WORLD_SIZE.width / 2, y: WORLD_SIZE.height / 2, zoom: 1.1 };
+    let camera = { x: WORLD_SIZE.width / 2, y: WORLD_SIZE.height / 2, zoom: 1.2 };
     let remotePlayers = {};
-    let selfId = null;
+
+    // تحديد الرتبة بناءً على النقاط
+    function getRankInfo(points) {
+        if (points >= 25000) return { title: "إمبراطور", icon: "👑", color: "#ffd700" };
+        if (points >= 18000) return { title: "أسطورة", icon: "💎", color: "#00f5ff" };
+        if (points >= 10000) return { title: "قائد", icon: "⚡", color: "#ff007f" };
+        return { title: "محارب", icon: "⚔️", color: "#3bff17" };
+    }
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}`;
     const socket = new WebSocket(wsUrl);
 
     socket.onopen = () => {
-        document.getElementById('connectionStatus').innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> متصل بـ Render`;
+        document.getElementById('connectionStatus').innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> متصل متزامن`;
     };
 
     socket.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        if (data.type === 'INIT') {
-            selfId = data.selfId;
-            remotePlayers = data.players;
-        } else if (data.type === 'SYNC') {
+        if (data.type === 'INIT' || data.type === 'SYNC') {
             remotePlayers = data.players;
             updateHUD();
         }
-    };
-
-    socket.onclose = () => {
-        document.getElementById('connectionStatus').innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500"></span> انقطع الاتصال`;
     };
 
     function updateHUD() {
@@ -92,21 +104,25 @@
             document.getElementById('dominantFlag').innerText = top.country.flag;
             document.getElementById('dominantCountry').innerText = `${top.country.name}`;
 
-            // الكاميرا تتبع اللاعب المتصدر سلاسة
+            // الكاميرا تتبع المتصدر سلاسة
             camera.x += (top.x - camera.x) * 0.08;
             camera.y += (top.y - camera.y) * 0.08;
         }
 
         const listContainer = document.getElementById('leaderboardList');
         listContainer.innerHTML = '';
-        playerArray.slice(0, 5).forEach((p, idx) => {
+        playerArray.slice(0, 6).forEach((p, idx) => {
+            const rank = getRankInfo(p.points);
             const row = document.createElement('div');
-            row.className = "flex justify-between items-center bg-white/5 p-2 rounded-xl border border-white/5";
+            row.className = "flex justify-between items-center bg-white/5 p-2.5 rounded-xl border border-white/5 hover:border-cyan-500/40 transition-all";
             row.innerHTML = `
-                <div class="flex items-center gap-2">
-                    <span class="font-bold font-['Sora'] text-cyan-400">#${idx + 1}</span>
-                    <span>${p.country.flag}</span>
-                    <span class="font-bold text-white truncate max-w-[100px]">${p.name}</span>
+                <div class="flex items-center gap-2.5">
+                    <span class="font-bold font-['Sora'] text-cyan-400 text-sm">#${idx + 1}</span>
+                    <span class="text-base">${p.country.flag}</span>
+                    <div class="flex flex-col">
+                        <span class="font-bold text-white truncate max-w-[100px]">${p.name}</span>
+                        <span class="text-[9px] font-bold" style="color: ${rank.color}">${rank.icon} ${rank.title}</span>
+                    </div>
                 </div>
                 <span class="font-['Sora'] text-cyan-300 font-bold">${p.points.toLocaleString()}</span>
             `;
@@ -114,80 +130,83 @@
         });
     }
 
-    let angleAnim = 0;
+    let waveTime = 0;
 
     function render() {
-        angleAnim += 0.02;
+        waveTime += 0.04;
         ctx.clearRect(0, 0, screenWidth, screenHeight);
         ctx.save();
         ctx.translate(screenWidth / 2, screenHeight / 2);
         ctx.scale(camera.zoom, camera.zoom);
         ctx.translate(-camera.x, -camera.y);
 
-        // 1. خلفية الخريطة والشبكة
-        ctx.strokeStyle = "rgba(0, 245, 255, 0.03)";
+        // 1. شبكة الخريطة النيونية
+        ctx.strokeStyle = "rgba(0, 245, 255, 0.025)";
         ctx.lineWidth = 1;
-        for (let x = 0; x <= WORLD_SIZE.width; x += 120) {
+        for (let x = 0; x <= WORLD_SIZE.width; x += 100) {
             ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, WORLD_SIZE.height); ctx.stroke();
         }
-        for (let y = 0; y <= WORLD_SIZE.height; y += 120) {
+        for (let y = 0; y <= WORLD_SIZE.height; y += 100) {
             ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WORLD_SIZE.width, y); ctx.stroke();
         }
 
-        // 2. رسم الكرات البصرية المحدثة
+        // 2. رسم الكرات المائية المتماوجة ذات الرؤية الناصعة
         Object.values(remotePlayers).forEach(p => {
             ctx.save();
             ctx.translate(p.x, p.y);
 
-            const r = p.radius || 50;
+            const baseR = p.radius || 50;
+            const rank = getRankInfo(p.points);
 
-            // أ) حلقة نيون خارجية تدور (Orbital Ring)
-            ctx.save();
-            ctx.rotate(angleAnim);
+            // أ) التموج المائي لخصائص حواف الكرة
             ctx.beginPath();
-            ctx.arc(0, 0, r + 8, 0, Math.PI * 1.5);
-            ctx.strokeStyle = "rgba(0, 245, 255, 0.5)";
-            ctx.lineWidth = 2;
-            ctx.stroke();
-            ctx.restore();
+            const pointsCount = 16;
+            for (let i = 0; i <= pointsCount; i++) {
+                const angle = (i / pointsCount) * Math.PI * 2;
+                // المعادلة المائية للتموج
+                const wave = Math.sin(angle * 4 + waveTime) * 3 + Math.cos(angle * 2 - waveTime) * 2;
+                const r = baseR + wave;
+                const px = Math.cos(angle) * r;
+                const py = Math.sin(angle) * r;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
 
-            // ب) جسم الكرة الداخلي - تدرج داكن متناسق يدعم القراءة
-            ctx.beginPath();
-            ctx.arc(0, 0, r, 0, Math.PI * 2);
-            
-            let grad = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r);
-            grad.addColorStop(0, "rgba(20, 28, 45, 0.95)"); // مركز داكن وواضح
-            grad.addColorStop(0.7, "rgba(10, 15, 25, 0.98)");
-            grad.addColorStop(1, "#00f5ff"); // إطار نيون أزرق قاطع
-
-            ctx.fillStyle = grad;
-            ctx.shadowBlur = 12;
-            ctx.shadowColor = "#00f5ff";
+            // ب) تعبئة المركز الداخلي باللون الداكن لمنع السطوع
+            ctx.fillStyle = "rgba(10, 14, 23, 0.96)";
             ctx.fill();
 
-            // إطار الحدود للكرة
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
-            ctx.lineWidth = 2;
+            // ج) التوهج الخارجي وحواف النيون فقط
+            ctx.shadowBlur = 22;
+            ctx.shadowColor = rank.color;
+            ctx.strokeStyle = rank.color;
+            ctx.lineWidth = 3;
             ctx.stroke();
-            ctx.shadowBlur = 0;
+            ctx.shadowBlur = 0; // إلغاء الظل للطبقات الداخلية لتبقى الكتابة حادة
 
-            // ج) العلم واسم اللاعب والنقاط في منتصف الكرة
+            // د) كتابة البيانات داخل الكرة بدقة وناصعية عالية
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
 
-            // العلم في المنتصف بحجم واضح
-            ctx.font = `${Math.floor(r * 0.5)}px Arial`;
-            ctx.fillText(p.country.flag, 0, -r * 0.15);
+            // 1. شارة الرتبة والعلم في المنتصف
+            ctx.font = `${Math.floor(baseR * 0.42)}px Arial`;
+            ctx.fillText(`${p.country.flag}`, 0, -baseR * 0.22);
 
-            // اسم اللاعب
-            ctx.font = `bold ${Math.max(11, Math.floor(r * 0.22))}px 'Tajawal'`;
+            // 2. اسم اللاعب باللون الأبيض الواضح
+            ctx.font = `bold ${Math.max(12, Math.floor(baseR * 0.22))}px 'Tajawal'`;
             ctx.fillStyle = "#ffffff";
-            ctx.fillText(p.name, 0, r * 0.25);
+            ctx.fillText(p.name, 0, baseR * 0.2);
 
-            // شريط النقاط السفلي
-            ctx.font = `bold ${Math.max(10, Math.floor(r * 0.18))}px 'Sora'`;
+            // 3. عنوان الرتبة الملونة
+            ctx.font = `bold ${Math.max(10, Math.floor(baseR * 0.16))}px 'Tajawal'`;
+            ctx.fillStyle = rank.color;
+            ctx.fillText(`${rank.icon} ${rank.title}`, 0, baseR * 0.48);
+
+            // 4. النقاط بخط أزرق سايان ناصع
+            ctx.font = `bold ${Math.max(10, Math.floor(baseR * 0.16))}px 'Sora'`;
             ctx.fillStyle = "#00ffff";
-            ctx.fillText(`${p.points.toLocaleString()} PTS`, 0, r * 0.55);
+            ctx.fillText(`${p.points.toLocaleString()} PTS`, 0, baseR * 0.72);
 
             ctx.restore();
         });
