@@ -2,6 +2,15 @@ const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
 const path = require('path');
+const { createClient } = require('@supabase/supabase-js');
+
+// ==========================================
+// 🔗 إعدادات الاتصال بـ Supabase
+// ==========================================
+// استبدل القيم بالروابط الخاصة بمشروعك على Supabase
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://bwbgfdteocewitdzrysg.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3YmdmZHRlb2Nld2l0ZHpyeXNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4NTE2MTMsImV4cCI6MjEwMzQyNzYxM30.C7hId5uF-p_7ibGSs0P7a2yxpOD-Zu4ON-lu7Pivn6k'; 
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const app = express();
 const server = http.createServer(app);
@@ -18,8 +27,29 @@ let dynamicStands = {}; // مدرجات الدول المنشأة ديناميك
 const PITCH = { minX: 1800, maxX: 6200, minY: 1800, maxY: 6200 };
 
 /**
+ * دالة حفظ بيانات اللاعب في Supabase عند التغير أو الخروج
+ */
+async function savePlayerToSupabase(player) {
+    if (!player || !player.id) return;
+    try {
+        const { error } = await supabase
+            .from('taralali_players')
+            .update({
+                points: player.points,
+                in_stand: player.inStand
+            })
+            .eq('user_id', player.id);
+
+        if (error) {
+            console.error(`[Supabase Error] فشل حفظ بيانات اللاعب ${player.id}:`, error.message);
+        }
+    } catch (err) {
+        console.error('[Supabase Exception]:', err);
+    }
+}
+
+/**
  * دالة حساب نصف قطر (حجم) الكرة بناءً على نقاط المستخدم في محفظة Taralali
- * الحجم يعكس الرصيد مباشرة: الحد الأدنى 32px وتكبر المساحة جذرياً مع زيادة النقاط
  */
 function calculateRadius(points) {
     const pts = Math.max(0, points || 0);
@@ -28,15 +58,12 @@ function calculateRadius(points) {
 
 /**
  * دالة جلب أو إنشاء مدرج دولة جديدة ديناميكياً محيطاً بالملعب
- * يتم توزيع مدرجات الدول على الحواف الأربعة (أعلى، يمين، أسفل، يسار) بالتتابع
  */
 function getOrCreateCountryStand(countryCode, countryName, flag, countryImage) {
     const code = (countryCode || 'GLOBAL').toUpperCase();
     if (!dynamicStands[code]) {
         const standIndex = Object.keys(dynamicStands).length;
         
-        // توزيع المدرجات على الجهات الأربع بشكل متوازن وتلقائي
-        // Sides: 0 = Top, 1 = Right, 2 = Bottom, 3 = Left
         const side = standIndex % 4;
         const indexOnSide = Math.floor(standIndex / 4);
 
@@ -44,19 +71,15 @@ function getOrCreateCountryStand(countryCode, countryName, flag, countryImage) {
         const spacing = 1200;
 
         if (side === 0) {
-            // أعلى الملعب (Top Rim)
             baseX = PITCH.minX + 600 + (indexOnSide * spacing);
             baseY = PITCH.minY - 700;
         } else if (side === 1) {
-            // يمين الملعب (Right Rim)
             baseX = PITCH.maxX + 700;
             baseY = PITCH.minY + 600 + (indexOnSide * spacing);
         } else if (side === 2) {
-            // أسفل الملعب (Bottom Rim)
             baseX = PITCH.minX + 600 + (indexOnSide * spacing);
             baseY = PITCH.maxY + 700;
         } else {
-            // يسار الملعب (Left Rim)
             baseX = PITCH.minX - 700;
             baseY = PITCH.minY + 600 + (indexOnSide * spacing);
         }
@@ -65,18 +88,18 @@ function getOrCreateCountryStand(countryCode, countryName, flag, countryImage) {
             code: code,
             name: countryName || code,
             flag: flag || '🌐',
-            countryImage: countryImage || null, // صورة / علم البلد الممثل
+            countryImage: countryImage || null,
             side: side,
             x: baseX,
             y: baseY,
-            color: `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}` // لون نيون مميز للمدرج
+            color: `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}`
         };
     }
     return dynamicStands[code];
 }
 
 /**
- * دالة إعادة حساب وتوزيع مواقع مقاعد الكرات داخل مدرج الدولة المحيط بالملعب
+ * دالة إعادة حساب وتوزيع مواقع مقاعد الكرات داخل مدرج الدولة
  */
 function recalculateStandPositions(countryCode) {
     const code = (countryCode || 'GLOBAL').toUpperCase();
@@ -84,7 +107,6 @@ function recalculateStandPositions(countryCode) {
     const stand = dynamicStands[code];
     if (!stand) return;
 
-    // ترتيب الأعضاء حسب الرصيد (الأكبر نقاطاً يظهر أولاً)
     members.sort((a, b) => b.points - a.points);
 
     const cols = Math.max(3, Math.ceil(Math.sqrt(members.length)));
@@ -92,13 +114,10 @@ function recalculateStandPositions(countryCode) {
         const row = Math.floor(idx / cols);
         const col = idx % cols;
 
-        // التوزيع الشبكي حسب اتجاه المدرج المحيط
         if (stand.side === 0 || stand.side === 2) {
-            // مدرجات أفقية (أعلى/أسفل)
             p.x = stand.x + (col - (cols - 1) / 2) * 180;
             p.y = stand.y + (stand.side === 0 ? -row * 150 : row * 150);
         } else {
-            // مدرجات رأسية (يمين/يسار)
             p.x = stand.x + (stand.side === 1 ? row * 150 : -row * 150);
             p.y = stand.y + (col - (cols - 1) / 2) * 180;
         }
@@ -113,7 +132,7 @@ function syncTaralaliUserToStand(userData) {
     const countryObj = getOrCreateCountryStand(countryCode, countryName, flag, countryImage);
 
     if (!activePlayers[userId]) {
-        const currentPoints = points !== undefined ? points : 10000;
+        const currentPoints = points !== undefined ? points : 1000;
         standVault[userId] = {
             id: userId,
             name: name || `عضو_${userId.toString().substr(0, 4)}`,
@@ -131,18 +150,40 @@ function syncTaralaliUserToStand(userData) {
 }
 
 // ==========================================
-// إدارة اتصالات الـ WebSocket
+// إدارة اتصالات الـ WebSocket مع Supabase
 // ==========================================
-wss.on('connection', (ws, req) => {
+wss.on('connection', async (ws, req) => {
     const urlParams = new URLSearchParams(req.url.replace('/?', ''));
-    
-    const userId = urlParams.get('userId') || 'user_' + Math.random().toString(36).substr(2, 6);
-    const countryCode = (urlParams.get('country') || 'SY').toUpperCase();
+    const userId = urlParams.get('userId');
+
+    if (!userId) {
+        ws.close();
+        return;
+    }
+
+    // 📥 1. جلب بيانات المستخدم الحقيقية من Supabase
+    let dbUser = null;
+    try {
+        const { data, error } = await supabase
+            .from('taralali_players')
+            .select('*')
+            .eq('user_id', userId)
+            .single();
+
+        if (!error && data) {
+            dbUser = data;
+        }
+    } catch (e) {
+        console.error('[Supabase Fetch Error]:', e);
+    }
+
+    // الاعتماد على بيانات Supabase إن وجدت، أو القيم الممررة من URL كخيار احتياطي
+    const countryCode = (dbUser?.country_code || urlParams.get('country') || 'SY').toUpperCase();
     const countryName = urlParams.get('countryName') || countryCode;
     const flag = urlParams.get('flag') || '🇸🇾';
-    const countryImage = urlParams.get('countryImage') || null; // رابط أو مسار صورة رمز البلد
-    const username = urlParams.get('name') || `لاعب_${userId.substr(0, 4)}`;
-    const userPoints = parseInt(urlParams.get('points'), 10) || 25000;
+    const countryImage = urlParams.get('countryImage') || null;
+    const username = dbUser?.username || urlParams.get('name') || `لاعب_${userId.substr(0, 4)}`;
+    const userPoints = dbUser?.points !== undefined ? dbUser.points : (parseInt(urlParams.get('points'), 10) || 1000);
 
     syncTaralaliUserToStand({
         userId: userId,
@@ -160,12 +201,11 @@ wss.on('connection', (ws, req) => {
         try {
             const data = JSON.parse(message);
 
-            // ⚔️ 1. أمر النزول من المدرج إلى الميدان للمنافسة
+            // ⚔️ 1. أمر النزول للميدان
             if (data.type === 'ENTER_ARENA' && standVault[userId]) {
                 const player = standVault[userId];
                 player.inStand = false;
                 
-                // إنزال الكرة في مكان عشوائي داخل حدود العشب
                 player.x = PITCH.minX + 200 + Math.random() * (PITCH.maxX - PITCH.minX - 400);
                 player.y = PITCH.minY + 200 + Math.random() * (PITCH.maxY - PITCH.minY - 400);
                 player.vx = 0;
@@ -175,9 +215,10 @@ wss.on('connection', (ws, req) => {
                 delete standVault[userId];
                 
                 recalculateStandPositions(player.country.code);
+                savePlayerToSupabase(player); // حفظ الحالة (خارج المدرج)
             }
 
-            // 🎯 2. توجيه الحركة في الميدان
+            // 🎯 2. توجيه الحركة
             if (data.type === 'TARGET' && activePlayers[userId]) {
                 const player = activePlayers[userId];
                 const dx = data.x - player.x;
@@ -194,7 +235,7 @@ wss.on('connection', (ws, req) => {
                 }
             }
 
-            // 🔄 3. تحديث نقاط المحفظة من API المنصة
+            // 🔄 3. تحديث نقاط المحفظة يدوياً
             if (data.type === 'UPDATE_WALLET_POINTS') {
                 const targetId = data.targetUserId || userId;
                 const newPoints = data.newPoints;
@@ -206,6 +247,7 @@ wss.on('connection', (ws, req) => {
                     if (targetOrb.inStand) {
                         recalculateStandPositions(targetOrb.country.code);
                     }
+                    savePlayerToSupabase(targetOrb); // حفظ النقاط في Supabase
                 }
             }
         } catch (err) {
@@ -213,10 +255,15 @@ wss.on('connection', (ws, req) => {
         }
     });
 
-    ws.on('close', () => {
-        if (activePlayers[userId]) {
-            const countryCode = activePlayers[userId].country.code;
+    // 📤 4. عند إغلاق الاتصال: حفظ البيانات الأخيرة في Supabase
+    ws.on('close', async () => {
+        const player = activePlayers[userId] || standVault[userId];
+        if (player) {
+            await savePlayerToSupabase(player);
+            
+            const countryCode = player.country.code;
             delete activePlayers[userId];
+            delete standVault[userId];
             recalculateStandPositions(countryCode);
         }
     });
@@ -228,7 +275,7 @@ wss.on('connection', (ws, req) => {
 setInterval(() => {
     const activeList = Object.values(activePlayers);
 
-    // تحديث إحداثيات الكرات على العشب
+    // تحديث الإحداثيات
     activeList.forEach(p => {
         p.x += p.vx;
         p.y += p.vy;
@@ -236,14 +283,13 @@ setInterval(() => {
         p.vx *= 0.98;
         p.vy *= 0.98;
 
-        // حماية الخروج خارج خطوط الملعب
         if (p.x - p.radius < PITCH.minX) { p.x = PITCH.minX + p.radius; p.vx = 0; }
         if (p.x + p.radius > PITCH.maxX) { p.x = PITCH.maxX - p.radius; p.vx = 0; }
         if (p.y - p.radius < PITCH.minY) { p.y = PITCH.minY + p.radius; p.vy = 0; }
         if (p.y + p.radius > PITCH.maxY) { p.y = PITCH.maxY - p.radius; p.vy = 0; }
     });
 
-    // منطق الابتلاع والخصم والعودة للمدرج
+    // منطق الابتلاع والخصم
     for (let i = 0; i < activeList.length; i++) {
         for (let j = i + 1; j < activeList.length; j++) {
             const a = activeList[i];
@@ -264,7 +310,7 @@ setInterval(() => {
                     smaller.radius = calculateRadius(smaller.points);
                     bigger.radius = calculateRadius(bigger.points);
 
-                    // طرد المهزوم وإعادته لمدرج بلده المحيط بالملعب
+                    // طرد المهزوم للمدرج
                     smaller.inStand = true;
                     smaller.vx = 0;
                     smaller.vy = 0;
@@ -273,12 +319,16 @@ setInterval(() => {
                     delete activePlayers[smaller.id];
 
                     recalculateStandPositions(smaller.country.code);
+
+                    // 💾 حفظ النقاط المحدثة في Supabase للاعبين
+                    savePlayerToSupabase(smaller);
+                    savePlayerToSupabase(bigger);
                 }
             }
         }
     }
 
-    // بث التحديث الموحد
+    // بث التحديث الموحد للجميع
     const payload = JSON.stringify({
         type: 'SYNC',
         activePlayers: activePlayers,
@@ -295,5 +345,5 @@ setInterval(() => {
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
-    console.log(`[Taralali Server] Perimeter Dynamic Stadium running on port ${PORT}`);
+    console.log(`[Taralali Server] Connected to Supabase on port ${PORT}`);
 });
