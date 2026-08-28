@@ -32,14 +32,19 @@
         </button>
     </div>
 
-    <!-- نافذة تسجيل الدخول المنبثقة (Login Modal) -->
+    <!-- نافذة تسجيل الدخول المنبثقة المعدلة (Email & Password Modal) -->
     <div id="loginModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
         <div class="glass-hud p-6 rounded-3xl w-full max-w-sm border border-cyan-500/40 text-center shadow-2xl space-y-4">
             <div class="text-4xl">⚽</div>
-            <h3 class="text-lg font-bold text-cyan-400">ربط الحساب بـ Supabase</h3>
-            <p class="text-xs text-gray-300 leading-relaxed">أدخل معرّف حسابك (User ID) ليتم سحب اسمك ورصيد نقاطك ورتبتك مباشرة إلى الميدان:</p>
+            <h3 class="text-lg font-bold text-cyan-400">تسجيل الدخول إلى الميدان</h3>
+            <p class="text-xs text-gray-300 leading-relaxed">أدخل بريدك الإلكتروني وكلمة السر المعتمدة في Supabase:</p>
             
-            <input type="text" id="userIdInput" placeholder="أدخل ID الحساب هنا..." class="w-full px-4 py-3 bg-gray-900/90 border border-cyan-500/30 rounded-xl text-white text-xs text-center font-mono focus:outline-none focus:border-cyan-400 transition">
+            <div class="space-y-3">
+                <input type="email" id="userEmailInput" placeholder="البريد الإلكتروني" class="w-full px-4 py-3 bg-gray-900/90 border border-cyan-500/30 rounded-xl text-white text-xs text-right font-mono focus:outline-none focus:border-cyan-400 transition">
+                <input type="password" id="userPasswordInput" placeholder="كلمة السر" class="w-full px-4 py-3 bg-gray-900/90 border border-cyan-500/30 rounded-xl text-white text-xs text-right font-mono focus:outline-none focus:border-cyan-400 transition">
+            </div>
+
+            <div id="loginError" class="hidden text-xs text-red-400 font-bold"></div>
             
             <div class="flex gap-2">
                 <button onclick="submitLogin()" class="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white py-2.5 rounded-xl text-xs font-bold transition shadow-lg active:scale-95">دخول</button>
@@ -71,15 +76,8 @@
     window.addEventListener('resize', resize);
     resize();
 
-    // 🏟️ أبعاد حدود الملعب الرسمية
-    const PITCH_BOUNDS = {
-        minX: 500,
-        maxX: 6700,
-        minY: 1900,
-        maxY: 5500
-    };
+    const PITCH_BOUNDS = { minX: 500, maxX: 6700, minY: 1900, maxY: 5500 };
 
-    // الكاميرا الديناميكية
     let camera = { x: 3600, y: 3000, zoom: 0.38, targetZoom: 0.38 };
     const MIN_ZOOM = 0.20;
     const MAX_ZOOM = 1.20;
@@ -105,7 +103,6 @@
         monumentImages[code] = img;
     });
 
-    // 🔗 إدارة معرف المستخدم وتوصيل WebSocket
     const urlParams = new URLSearchParams(window.location.search);
     let currentUserId = urlParams.get('userId') || localStorage.getItem('dominion_user_id') || '';
 
@@ -150,25 +147,45 @@
         };
     }
 
-    // النافذة المنبثقة للتحكم بالدخول
     function openLoginModal() {
         document.getElementById('loginModal').classList.remove('hidden');
-        document.getElementById('userIdInput').focus();
+        document.getElementById('userEmailInput').focus();
     }
 
     function closeLoginModal() {
         document.getElementById('loginModal').classList.add('hidden');
+        document.getElementById('loginError').classList.add('hidden');
     }
 
-    function submitLogin() {
-        const inputVal = document.getElementById('userIdInput').value.trim();
-        if (inputVal) {
-            currentUserId = inputVal;
-            localStorage.setItem('dominion_user_id', currentUserId);
-            updateAuthUI();
-            closeLoginModal();
-            initWebSocket(currentUserId);
+    // الدالة المعدلة لمعالجة تسجيل الدخول للإيميل وكلمة السر
+    async function submitLogin() {
+        const email = document.getElementById('userEmailInput').value.trim();
+        const password = document.getElementById('userPasswordInput').value.trim();
+        const errorEl = document.getElementById('loginError');
+
+        if (!email || !password) {
+            errorEl.innerText = "يرجى كتابة البريد الإلكتروني وكلمة السر";
+            errorEl.classList.remove('hidden');
+            return;
         }
+
+        /* 
+           تنويه: إذا كنت تستخدم مكتبة Supabase JS في مشروعك، 
+           يمكنك استبدال الكود أدناه بـ:
+           
+           const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+           if (error) { errorEl.innerText = error.message; errorEl.classList.remove('hidden'); return; }
+           const userId = data.user.id;
+        */
+
+        // هنا نفترض استخدام ID الحساب الناتج عن عملية الدخول
+        // تجريبياً سنأخذ الإيميل أو يُفترض أن السيرفر يرجّع لك الـ User ID
+        currentUserId = email; 
+        localStorage.setItem('dominion_user_id', currentUserId);
+        
+        updateAuthUI();
+        closeLoginModal();
+        initWebSocket(currentUserId);
     }
 
     updateAuthUI();
@@ -353,7 +370,6 @@
         const img = monumentImages[countryCode];
         const themeColor = countryLandmarks[countryCode]?.color || "#00f5ff";
 
-        // 1. صورة المعلم الجغرافي
         ctx.beginPath();
         ctx.arc(0, 0, radius, 0, Math.PI * 2);
         ctx.clip();
@@ -367,7 +383,6 @@
             ctx.globalAlpha = 1.0;
         }
 
-        // 2. التظليل الزجاجي
         let glassGrad = ctx.createRadialGradient(-radius * 0.3, -radius * 0.3, 2, 0, 0, radius);
         glassGrad.addColorStop(0, "rgba(255, 255, 255, 0.45)");
         glassGrad.addColorStop(1, "rgba(0, 0, 0, 0.75)");
@@ -392,15 +407,12 @@
         const points = p.points ? p.points.toLocaleString() : 0;
         const tier = p.tier || 'Bronze';
 
-        // 🏷️ طباعة الاسم
         ctx.fillText(`${flag} ${name}`, 0, -fontSize * 0.8);
 
-        // 💎 طباعة النقاط
         ctx.font = `bold ${fontSize * 0.75}px 'Sora'`;
         ctx.fillStyle = isStand ? "#cbd5e0" : "#00ffff";
         ctx.fillText(`${points} PTS`, 0, 0);
 
-        // 🏅 طباعة الرتبة (Silver / Bronze / Gold)
         const tierColor = tier === 'Silver' ? '#c0c0c0' : (tier === 'Gold' ? '#ffd700' : '#cd7f32');
         ctx.fillStyle = tierColor;
         ctx.font = `bold ${fontSize * 0.65}px 'Tajawal'`;
