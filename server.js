@@ -7,8 +7,8 @@ const { createClient } = require('@supabase/supabase-js');
 // ==========================================
 // 🔗 إعدادات الاتصال بـ Supabase
 // ==========================================
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://your-project.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || 'YOUR_SUPABASE_SERVICE_ROLE_KEY'; 
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://bwbgfdteocewitdzrysg.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3YmdmZHRlb2Nld2l0ZHpyeXNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4NTE2MTMsImV4cCI6MjEwMzQyNzYxM30.C7hId5uF-p_7ibGSs0P7a2yxpOD-Zu4ON-lu7Pivn6k'; 
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const app = express();
