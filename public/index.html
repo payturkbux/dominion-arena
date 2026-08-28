@@ -24,6 +24,30 @@
         </div>
     </header>
 
+    <!-- زر تسجيل الدخول (يظهر في حال كان زائر) -->
+    <div class="absolute top-6 left-6 z-30">
+        <button id="authBtn" onclick="openLoginModal()" class="glass-hud px-4 py-2.5 rounded-2xl flex items-center gap-2 border border-cyan-500/40 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition shadow-2xl">
+            <span id="authBtnIcon">🔑</span>
+            <span id="authBtnText">تسجيل الدخول</span>
+        </button>
+    </div>
+
+    <!-- نافذة تسجيل الدخول المنبثقة (Login Modal) -->
+    <div id="loginModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
+        <div class="glass-hud p-6 rounded-3xl w-full max-w-sm border border-cyan-500/40 text-center shadow-2xl space-y-4">
+            <div class="text-4xl">⚽</div>
+            <h3 class="text-lg font-bold text-cyan-400">ربط الحساب بـ Supabase</h3>
+            <p class="text-xs text-gray-300 leading-relaxed">أدخل معرّف حسابك (User ID) ليتم سحب اسمك ورصيد نقاطك ورتبتك مباشرة إلى الميدان:</p>
+            
+            <input type="text" id="userIdInput" placeholder="أدخل ID الحساب هنا..." class="w-full px-4 py-3 bg-gray-900/90 border border-cyan-500/30 rounded-xl text-white text-xs text-center font-mono focus:outline-none focus:border-cyan-400 transition">
+            
+            <div class="flex gap-2">
+                <button onclick="submitLogin()" class="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white py-2.5 rounded-xl text-xs font-bold transition shadow-lg active:scale-95">دخول</button>
+                <button onclick="closeLoginModal()" class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-xl text-xs font-bold transition active:scale-95">إلغاء</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Leaderboard -->
     <aside class="absolute top-6 right-6 z-30 glass-hud p-4 rounded-2xl w-80 border border-amber-500/30 shadow-2xl">
         <div class="flex items-center gap-2 mb-3 pb-2 border-b border-white/10">
@@ -64,6 +88,7 @@
     let standVault = {};
     let dynamicStands = {};
     let selfId = null;
+    let socket = null;
 
     const monumentImages = {};
     const countryLandmarks = {
@@ -80,30 +105,74 @@
         monumentImages[code] = img;
     });
 
-    // 🔗 الربط الديناميكي مع تمرير الـ userId
+    // 🔗 إدارة معرف المستخدم وتوصيل WebSocket
     const urlParams = new URLSearchParams(window.location.search);
-    const userIdQuery = urlParams.get('userId') || '';
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}${userIdQuery ? '?userId=' + userIdQuery : ''}`;
-    const socket = new WebSocket(wsUrl);
+    let currentUserId = urlParams.get('userId') || localStorage.getItem('dominion_user_id') || '';
 
-    socket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        if (data.type === 'INIT') {
-            selfId = data.selfId;
-        } else if (data.type === 'SYNC') {
-            activePlayers = data.activePlayers || {};
-            standVault = data.standVault || {};
-            dynamicStands = data.dynamicStands || {};
-            
-            const myOrb = activePlayers[selfId] || standVault[selfId];
-            if (myOrb) {
-                camera.x += (myOrb.x - camera.x) * 0.1;
-                camera.y += (myOrb.y - camera.y) * 0.1;
-            }
-            updateLeaderboard();
+    function updateAuthUI() {
+        const authBtnText = document.getElementById('authBtnText');
+        const authBtnIcon = document.getElementById('authBtnIcon');
+        
+        if (currentUserId && !currentUserId.startsWith('guest_')) {
+            if (authBtnText) authBtnText.innerText = 'حسابي المسجل';
+            if (authBtnIcon) authBtnIcon.innerText = '👤';
+        } else {
+            if (authBtnText) authBtnText.innerText = 'تسجيل الدخول';
+            if (authBtnIcon) authBtnIcon.innerText = '🔑';
         }
-    };
+    }
+
+    function initWebSocket(userId) {
+        if (socket) socket.close();
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsHost = window.location.host || 'dominion-arena-o372.onrender.com';
+        const wsUrl = `${protocol}//${wsHost}${userId ? '?userId=' + encodeURIComponent(userId) : ''}`;
+        
+        socket = new WebSocket(wsUrl);
+
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'INIT') {
+                selfId = data.selfId;
+            } else if (data.type === 'SYNC') {
+                activePlayers = data.activePlayers || {};
+                standVault = data.standVault || {};
+                dynamicStands = data.dynamicStands || {};
+                
+                const myOrb = activePlayers[selfId] || standVault[selfId];
+                if (myOrb) {
+                    camera.x += (myOrb.x - camera.x) * 0.1;
+                    camera.y += (myOrb.y - camera.y) * 0.1;
+                }
+                updateLeaderboard();
+            }
+        };
+    }
+
+    // النافذة المنبثقة للتحكم بالدخول
+    function openLoginModal() {
+        document.getElementById('loginModal').classList.remove('hidden');
+        document.getElementById('userIdInput').focus();
+    }
+
+    function closeLoginModal() {
+        document.getElementById('loginModal').classList.add('hidden');
+    }
+
+    function submitLogin() {
+        const inputVal = document.getElementById('userIdInput').value.trim();
+        if (inputVal) {
+            currentUserId = inputVal;
+            localStorage.setItem('dominion_user_id', currentUserId);
+            updateAuthUI();
+            closeLoginModal();
+            initWebSocket(currentUserId);
+        }
+    }
+
+    updateAuthUI();
+    initWebSocket(currentUserId);
 
     window.addEventListener('wheel', (e) => {
         e.preventDefault();
@@ -124,7 +193,7 @@
     }
 
     function handleActionPointer(clientX, clientY) {
-        if (!selfId) return;
+        if (!selfId || !socket) return;
         const myOrb = activePlayers[selfId] || standVault[selfId];
         if (!myOrb) return;
 
@@ -147,15 +216,20 @@
         }
     }
 
-    window.addEventListener('mousedown', (e) => handleActionPointer(e.clientX, e.clientY));
+    window.addEventListener('mousedown', (e) => {
+        if (e.target.closest('header, aside, button, #loginModal')) return;
+        handleActionPointer(e.clientX, e.clientY);
+    });
+
     window.addEventListener('touchstart', (e) => {
         if (e.touches && e.touches.length > 0) {
+            if (e.touches[0].target.closest('header, aside, button, #loginModal')) return;
             handleActionPointer(e.touches[0].clientX, e.touches[0].clientY);
         }
     }, { passive: true });
 
     window.addEventListener('mousemove', (e) => {
-        if (!selfId || !activePlayers[selfId]) return;
+        if (!selfId || !activePlayers[selfId] || !socket) return;
         const myOrb = activePlayers[selfId];
         const rawPos = getWorldCoordinates(e.clientX, e.clientY);
         const boundedPos = clampToPitch(rawPos.x, rawPos.y, myOrb.radius || 40);
