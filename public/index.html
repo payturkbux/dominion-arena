@@ -1,288 +1,314 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html class="dark" lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Taralali Stadium - Arena</title>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <title>Dominion Arena Stadium</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Tajawal:wght@500;700;900&display=swap" rel="stylesheet"/>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
-        body, html { width: 100%; height: 100%; overflow: hidden; background-color: #0b0e14; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        #canvas { width: 100vw; height: 100vh; display: block; cursor: crosshair; touch-action: none; }
-        
-        #hud {
-            position: absolute; top: 20px; right: 20px;
-            background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            padding: 14px 22px; border-radius: 16px; color: #fff;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-            pointer-events: none; z-index: 10;
-        }
-        #hud h3 { font-size: 16px; color: #38bdf8; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 1px; }
-        #hud div { font-size: 14px; margin: 3px 0; color: #cbd5e1; }
-        #hud strong { color: #f59e0b; font-weight: 700; }
-
-        #action-tip {
-            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.75); border: 1px solid rgba(56, 189, 248, 0.4);
-            color: #e2e8f0; padding: 12px 28px; border-radius: 30px;
-            font-size: 15px; text-align: center; pointer-events: none;
-            box-shadow: 0 4px 20px rgba(56, 189, 248, 0.2); z-index: 10;
-            animation: pulseTip 2s infinite ease-in-out;
-        }
-
-        @keyframes pulseTip {
-            0%, 100% { opacity: 0.85; transform: translateX(-50%) scale(1); }
-            50% { opacity: 1; transform: translateX(-50%) scale(1.03); }
-        }
+        body { font-family: 'Tajawal', sans-serif; background-color: #0c101c; margin: 0; overflow: hidden; touch-action: none; }
+        .glass-hud { background: rgba(10, 14, 23, 0.85); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.12); }
     </style>
 </head>
-<body>
+<body class="text-white relative w-screen h-screen select-none">
 
-    <div id="hud">
-        <h3 id="player-name">Taralali Player</h3>
-        <div>النقاط / الرصيد: <strong id="player-points">0</strong></div>
-        <div>الحالة: <span id="player-status" style="color: #f87171;">في المدرج</span></div>
-    </div>
+    <!-- HUD Header -->
+    <header class="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-6 glass-hud px-8 py-3 rounded-2xl shadow-2xl border border-cyan-500/30">
+        <div class="flex items-center gap-3">
+            <span class="text-3xl">⚔️</span>
+            <div>
+                <div id="hudStatusTitle" class="text-[10px] uppercase text-cyan-400 font-bold tracking-widest">كاميرا تكتيكية ديناميكية</div>
+                <div id="hudActionTip" class="text-xs font-bold text-emerald-400">انقر بزر الماوس أو اللمس للنزول إلى الميدان والتوجيه</div>
+            </div>
+        </div>
+    </header>
 
-    <div id="action-tip">انقر بالماوس أو انقر على الشاشة للنزول إلى الميدان / التوجيه ⚔️</div>
+    <!-- Leaderboard -->
+    <aside class="absolute top-6 right-6 z-30 glass-hud p-4 rounded-2xl w-72 border border-amber-500/30 shadow-2xl">
+        <div class="flex items-center gap-2 mb-3 pb-2 border-b border-white/10">
+            <span class="text-xl">🏆</span>
+            <h3 class="font-bold text-sm text-amber-400">قائمة المتصدرين (Top 5)</h3>
+        </div>
+        <ul id="leaderboardList" class="space-y-2 text-xs"></ul>
+    </aside>
 
-    <canvas id="canvas"></canvas>
+    <canvas id="worldCanvas" class="w-full h-full block cursor-crosshair"></canvas>
 
 <script>
-    const canvas = document.getElementById('canvas');
+    const canvas = document.getElementById('worldCanvas');
     const ctx = canvas.getContext('2d');
 
-    function resizeCanvas() {
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
+    let screenWidth, screenHeight;
+    function resize() {
+        screenWidth = canvas.width = window.innerWidth;
+        screenHeight = canvas.height = window.innerHeight;
     }
-    window.addEventListener('resize', resizeCanvas);
-    resizeCanvas();
+    window.addEventListener('resize', resize);
+    resize();
 
-    // الاتصال بالخادم عبر WebSocket مع إرسال معرف البلد والصورة والاسم
-    const urlParams = new URLSearchParams(window.location.search);
-    const userId = urlParams.get('userId') || 'usr_' + Math.floor(Math.random() * 89999 + 10000);
-    const country = urlParams.get('country') || 'SY';
-    const countryName = urlParams.get('countryName') || 'سوريا';
-    const flag = urlParams.get('flag') || '🇸🇾';
-    const countryImage = urlParams.get('countryImage') || '';
-    const name = urlParams.get('name') || 'لاعب_' + userId.slice(-4);
-    const points = urlParams.get('points') || 25000;
+    // الكاميرا الديناميكية
+    let camera = { x: 3600, y: 3000, zoom: 0.38, targetZoom: 0.38 };
+    const MIN_ZOOM = 0.20; // أقصى ابتعاد
+    const MAX_ZOOM = 1.20; // أقصى تقريب
 
-    const wsProtocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
-    const wsUrl = `${wsProtocol}${window.location.host}?userId=${userId}&country=${country}&countryName=${encodeURIComponent(countryName)}&flag=${encodeURIComponent(flag)}&countryImage=${encodeURIComponent(countryImage)}&name=${encodeURIComponent(name)}&points=${points}`;
-    
-    const ws = new WebSocket(wsUrl);
-
-    let selfId = null;
     let activePlayers = {};
     let standVault = {};
-    let dynamicStands = {};
-    let imageCache = {};
+    let selfId = null;
 
-    // تحميل ومعالجة صور البلدان الممثلة
-    function getCountryImage(url) {
-        if (!url) return null;
-        if (!imageCache[url]) {
-            const img = new Image();
-            img.src = url;
-            imageCache[url] = img;
-        }
-        return imageCache[url];
-    }
+    const monumentImages = {};
+    const countryLandmarks = {
+        "SY": { name: "سوريا", flag: "🇸🇾", standX: 1200, color: "#00f5ff", url: "https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=400&q=80" },
+        "SA": { name: "السعودية", flag: "🇸🇦", standX: 2400, color: "#3bff17", url: "https://images.unsplash.com/photo-1586724237569-f3d0c1dee8c6?auto=format&fit=crop&w=400&q=80" },
+        "TR": { name: "تركيا", flag: "🇹🇷", standX: 3600, color: "#ff4b89", url: "https://images.unsplash.com/photo-1541432901042-2d8bd64b4a9b?auto=format&fit=crop&w=400&q=80" },
+        "EG": { name: "مصر", flag: "🇪🇬", standX: 4800, color: "#ffb1c3", url: "https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=400&q=80" },
+        "AE": { name: "الإمارات", flag: "🇦🇪", standX: 6000, color: "#ffd9e0", url: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=400&q=80" }
+    };
 
-    // كاميرا العرض المستهدفة
-    let camX = 4000, camY = 4000, camZoom = 0.5;
+    Object.keys(countryLandmarks).forEach(code => {
+        const img = new Image();
+        img.src = countryLandmarks[code].url;
+        monumentImages[code] = img;
+    });
 
-    ws.onmessage = (event) => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const socket = new WebSocket(`${protocol}//${window.location.host}`);
+
+    socket.onmessage = (event) => {
         const data = JSON.parse(event.data);
         if (data.type === 'INIT') {
             selfId = data.selfId;
         } else if (data.type === 'SYNC') {
             activePlayers = data.activePlayers;
             standVault = data.standVault;
-            dynamicStands = data.dynamicStands;
-            updateHUD();
+            
+            const myOrb = activePlayers[selfId] || standVault[selfId];
+            if (myOrb) {
+                camera.x += (myOrb.x - camera.x) * 0.1;
+                camera.y += (myOrb.y - camera.y) * 0.1;
+            }
+            updateLeaderboard();
         }
     };
 
-    function updateHUD() {
-        if (!selfId) return;
-        const myOrb = activePlayers[selfId] || standVault[selfId];
-        if (myOrb) {
-            document.getElementById('player-name').innerText = `${myOrb.country.flag} ${myOrb.name}`;
-            document.getElementById('player-points').innerText = Math.floor(myOrb.points).toLocaleString();
-            
-            const statusElem = document.getElementById('player-status');
-            if (myOrb.inStand) {
-                statusElem.innerText = `في مدرج ${myOrb.country.name}`;
-                statusElem.style.color = '#f87171';
-                document.getElementById('action-tip').innerText = '💡 انقر بالماوس أو على الشاشة للنزول إلى الميدان ⚔️';
-            } else {
-                statusElem.innerText = 'في الميدان (مباشر)';
-                statusElem.style.color = '#4ade80';
-                document.getElementById('action-tip').innerText = '🎯 انقر على أي نقطة في الميدان لتوجيه كرتك إليها';
-            }
-        }
+    // 🔍 تحكّم الكاميرا بعجلة الماوس (Smooth Zoom)
+    window.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
+        camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.targetZoom * zoomFactor));
+    }, { passive: false });
+
+    /**
+     * 🎯 تحويل إحداثيات الشاشة إلى إحداثيات العالم
+     */
+    function getWorldCoordinates(clientX, clientY) {
+        const worldX = (clientX - screenWidth / 2) / camera.zoom + camera.x;
+        const worldY = (clientY - screenHeight / 2) / camera.zoom + camera.y;
+        return { x: worldX, y: worldY };
     }
 
     /**
-     * 🎯 معالجة النقر بزر الماوس أو التاتش (Touch) للنزول إلى الميدان أو التوجيه
+     * ⚔️ معالجة النقر والتاتش للنزول إلى الساحة أو التوجيه
      */
-    function handlePointerAction(clientX, clientY) {
+    function handleActionPointer(clientX, clientY) {
         if (!selfId) return;
 
         const myOrb = activePlayers[selfId] || standVault[selfId];
         if (!myOrb) return;
 
-        // تحويل إحداثيات الشاشة إلى إحداثيات العالم الملعب العالمي
-        const worldX = (clientX - canvas.width / 2) / camZoom + camX;
-        const worldY = (clientY - canvas.height / 2) / camZoom + camY;
+        const pos = getWorldCoordinates(clientX, clientY);
 
         if (myOrb.inStand) {
-            // ⚔️ إذا كان في المدرج -> النقر ينزله فوراً إلى الساحة
-            ws.send(JSON.stringify({
+            // إرسال طلب النزول فوراً إلى الساحة
+            socket.send(JSON.stringify({
                 type: 'ENTER_ARENA',
-                targetX: worldX,
-                targetY: worldY
+                targetX: pos.x,
+                targetY: pos.y
             }));
         } else {
-            // 🎯 إذا كان بالساحة -> النقر يوجّه الكرة إلى النقطة المنقورة
-            ws.send(JSON.stringify({
+            // توجيه الكرة داخل الملعب
+            socket.send(JSON.stringify({
                 type: 'TARGET',
-                x: worldX,
-                y: worldY
+                x: pos.x,
+                y: pos.y
             }));
         }
     }
 
-    // استجابة للنقر بالماوس
+    // استجابة الماوس والتاتش
     window.addEventListener('mousedown', (e) => {
-        handlePointerAction(e.clientX, e.clientY);
+        handleActionPointer(e.clientX, e.clientY);
     });
 
-    // استجابة للتاتش على الهواتف والأجهزة اللوحية
     window.addEventListener('touchstart', (e) => {
         if (e.touches && e.touches.length > 0) {
-            handlePointerAction(e.touches[0].clientX, e.touches[0].clientY);
+            handleActionPointer(e.touches[0].clientX, e.touches[0].clientY);
         }
     }, { passive: true });
 
-    // ==========================================
-    // دالة الرسم الرئيسية (Render Loop)
-    // ==========================================
-    function render() {
-        requestAnimationFrame(render);
+    window.addEventListener('mousemove', (e) => {
+        if (!selfId || !activePlayers[selfId]) return;
+        const pos = getWorldCoordinates(e.clientX, e.clientY);
+        socket.send(JSON.stringify({ type: 'TARGET', x: pos.x, y: pos.y }));
+    });
 
-        // تتبع كرة المستخدم بالكاميرا
-        const myOrb = activePlayers[selfId] || standVault[selfId];
-        if (myOrb) {
-            camX += (myOrb.x - camX) * 0.1;
-            camY += (myOrb.y - camY) * 0.1;
+    function updateLeaderboard() {
+        const listEl = document.getElementById('leaderboardList');
+        const allEntities = [...Object.values(activePlayers), ...Object.values(standVault)];
+        allEntities.sort((a, b) => b.points - a.points);
+        const top5 = allEntities.slice(0, 5);
+
+        listEl.innerHTML = top5.map((item, index) => {
+            const isMe = item.id === selfId;
+            const statusTag = item.inStand ? '<span class="text-[9px] text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">مدرج</span>' : '<span class="text-[9px] text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded">ملعب</span>';
+            return `
+                <li class="flex items-center justify-between p-2 rounded-lg ${isMe ? 'bg-amber-500/20 border border-amber-500/50' : 'bg-white/5'}">
+                    <div class="flex items-center gap-2 truncate">
+                        <span class="font-bold text-amber-400 w-4">${index + 1}.</span>
+                        <span class="truncate">${item.country.flag} ${item.name}</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        ${statusTag}
+                        <span class="font-mono font-bold text-cyan-300">${item.points.toLocaleString()}</span>
+                    </div>
+                </li>
+            `;
+        }).join('');
+    }
+
+    function drawStadiumPitch() {
+        ctx.fillStyle = "#0c1220";
+        ctx.fillRect(-3000, -3000, 13000, 12000);
+
+        let lightGrad = ctx.createRadialGradient(3600, 3000, 500, 3600, 3000, 5500);
+        lightGrad.addColorStop(0, "rgba(0, 245, 255, 0.1)");
+        lightGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+        ctx.fillStyle = lightGrad;
+        ctx.fillRect(-3000, -3000, 13000, 12000);
+
+        let turfGrad = ctx.createLinearGradient(0, 1900, 0, 5500);
+        turfGrad.addColorStop(0, "#0a3320");
+        turfGrad.addColorStop(0.5, "#0e442b");
+        turfGrad.addColorStop(1, "#0a3320");
+        ctx.fillStyle = turfGrad;
+        ctx.fillRect(500, 1900, 6200, 3600);
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
+        for (let x = 500; x < 6700; x += 300) {
+            ctx.fillRect(x, 1900, 150, 3600);
         }
 
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#00f5ff";
+        ctx.lineWidth = 14;
+        ctx.shadowBlur = 30;
+        ctx.shadowColor = "#00f5ff";
+        ctx.strokeRect(500, 1900, 6200, 3600);
+        ctx.shadowBlur = 0;
 
-        ctx.save();
-        ctx.translate(canvas.width / 2, canvas.height / 2);
-        ctx.scale(camZoom, camZoom);
-        ctx.translate(-camX, -camY);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
+        ctx.lineWidth = 10;
+        ctx.beginPath(); ctx.moveTo(3600, 1900); ctx.lineTo(3600, 5500); ctx.stroke();
+        ctx.beginPath(); ctx.arc(3600, 3700, 450, 0, Math.PI * 2); ctx.stroke();
+    }
 
-        // 1. رسم خلفية المحيط والاستاد
-        ctx.fillStyle = '#070a0f';
-        ctx.fillRect(-2000, -2000, 12000, 12000);
-
-        // 2. رسم الميدان العشبي
-        ctx.fillStyle = '#1e3a29';
-        ctx.fillRect(1800, 1800, 4400, 4400);
-        ctx.strokeStyle = '#2d5a3f';
-        ctx.lineWidth = 12;
-        ctx.strokeRect(1800, 1800, 4400, 4400);
-
-        // خطوط الملعب الدائرية والمنتصف
-        ctx.beginPath();
-        ctx.arc(4000, 4000, 600, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-        ctx.lineWidth = 6;
-        ctx.stroke();
-
-        // 3. رسم مدرجات الدول المحيطة بالملعب مع صور وأعلام البلدان
-        Object.values(dynamicStands).forEach(stand => {
-            ctx.save();
-            ctx.translate(stand.x, stand.y);
-
-            // أرضية المدرج NION
-            ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-            ctx.strokeStyle = stand.color || '#38bdf8';
-            ctx.lineWidth = 6;
+    function drawStandsStructure() {
+        Object.keys(countryLandmarks).forEach(code => {
+            const c = countryLandmarks[code];
+            
+            let standGrad = ctx.createLinearGradient(c.standX - 450, 700, c.standX + 450, 1600);
+            standGrad.addColorStop(0, "#192234");
+            standGrad.addColorStop(1, "#0f1624");
+            ctx.fillStyle = standGrad;
+            
             ctx.beginPath();
-            ctx.roundRect(-400, -200, 800, 400, 24);
+            ctx.roundRect(c.standX - 450, 750, 900, 850, 24);
             ctx.fill();
-            ctx.stroke();
 
-            // رسم علم وصورة الدولة الممثلة للبلد
-            const img = getCountryImage(stand.countryImage);
-            if (img && img.complete) {
-                ctx.save();
-                ctx.beginPath();
-                ctx.arc(-280, 0, 45, 0, Math.PI * 2);
-                ctx.clip();
-                ctx.drawImage(img, -325, -45, 90, 90);
-                ctx.restore();
+            ctx.strokeStyle = c.color;
+            ctx.lineWidth = 4;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = c.color;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+            ctx.lineWidth = 2;
+            for (let y = 850; y < 1500; y += 140) {
+                ctx.beginPath(); ctx.moveTo(c.standX - 420, y); ctx.lineTo(c.standX + 420, y); ctx.stroke();
             }
 
-            // اسم الدولة والعلم
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 36px Arial';
-            ctx.textAlign = 'center';
-            ctx.fillText(`${stand.flag} ${stand.name}`, 0, -110);
-
-            ctx.restore();
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 34px 'Tajawal'";
+            ctx.textAlign = "center";
+            ctx.fillText(`${c.flag} مدرج VIP - ${c.name}`, c.standX, 810);
         });
+    }
 
-        // 4. رسم كرات مدرجات الانتظار
-        Object.values(standVault).forEach(orb => drawOrb(orb, true));
+    function drawOrb(p, isStand) {
+        ctx.save();
+        ctx.translate(p.x, p.y);
 
-        // 5. رسم كرات اللاعبين النشطين في الميدان
-        Object.values(activePlayers).forEach(orb => drawOrb(orb, false));
+        const countryCode = p.country?.code || "SY";
+        const img = monumentImages[countryCode];
+        const themeColor = countryLandmarks[countryCode]?.color || "#00f5ff";
+
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+        ctx.clip();
+
+        if (img && img.complete) {
+            const scale = Math.max(1, p.radius / 30);
+            const drawWidth = p.radius * 2 * scale;
+            const drawHeight = p.radius * 2 * scale;
+            ctx.globalAlpha = isStand ? 0.8 : 0.95;
+            ctx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+            ctx.globalAlpha = 1.0;
+        }
+
+        let glassGrad = ctx.createRadialGradient(-p.radius * 0.3, -p.radius * 0.3, 2, 0, 0, p.radius);
+        glassGrad.addColorStop(0, "rgba(255, 255, 255, 0.45)");
+        glassGrad.addColorStop(1, "rgba(0, 0, 0, 0.75)");
+        ctx.fillStyle = glassGrad;
+        ctx.beginPath(); ctx.arc(0, 0, p.radius, 0, Math.PI * 2); ctx.fill();
+
+        ctx.lineWidth = Math.max(3, p.radius * 0.08);
+        ctx.strokeStyle = isStand ? "rgba(255, 255, 255, 0.5)" : (p.id === selfId ? "#ffd700" : themeColor);
+        ctx.shadowBlur = isStand ? 8 : (p.id === selfId ? 30 : 20);
+        ctx.shadowColor = ctx.strokeStyle;
+        ctx.stroke();
+
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const fontSize = Math.max(12, p.radius * 0.23);
+        ctx.font = `bold ${fontSize}px 'Tajawal'`;
+        ctx.fillText(`${p.country.flag} ${p.name}`, 0, -fontSize * 0.4);
+
+        ctx.font = `bold ${fontSize * 0.75}px 'Sora'`;
+        ctx.fillStyle = isStand ? "#cbd5e0" : "#00ffff";
+        ctx.fillText(`${p.points.toLocaleString()} PTS`, 0, fontSize * 0.65);
 
         ctx.restore();
     }
 
-    function drawOrb(orb, isInStand) {
+    function render() {
+        camera.zoom += (camera.targetZoom - camera.zoom) * 0.1;
+
+        ctx.clearRect(0, 0, screenWidth, screenHeight);
         ctx.save();
-        ctx.translate(orb.x, orb.y);
+        ctx.translate(screenWidth / 2, screenHeight / 2);
+        ctx.scale(camera.zoom, camera.zoom);
+        ctx.translate(-camera.x, -camera.y);
 
-        // هالة توهج للكرة الخاصة بالحساب الحالي
-        if (orb.id === selfId) {
-            ctx.beginPath();
-            ctx.arc(0, 0, orb.radius + 14, 0, Math.PI * 2);
-            ctx.fillStyle = isInStand ? 'rgba(248, 113, 113, 0.3)' : 'rgba(56, 189, 248, 0.4)';
-            ctx.fill();
-        }
+        drawStadiumPitch();
+        drawStandsStructure();
 
-        // الجسم الرئيسي للكرة
-        ctx.beginPath();
-        ctx.arc(0, 0, orb.radius, 0, Math.PI * 2);
-        ctx.fillStyle = orb.country.color || '#38bdf8';
-        ctx.globalAlpha = isInStand ? 0.75 : 1.0;
-        ctx.fill();
-        ctx.lineWidth = 4;
-        ctx.strokeStyle = '#ffffff';
-        ctx.stroke();
-
-        // اسم وتفاصيل المستخدم داخل/فوق الكرة
-        ctx.fillStyle = '#ffffff';
-        ctx.font = `bold ${Math.max(14, orb.radius * 0.35)}px Arial`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText(orb.name, 0, -6);
-
-        ctx.font = `${Math.max(11, orb.radius * 0.25)}px Arial`;
-        ctx.fillStyle = '#f59e0b';
-        ctx.fillText(`${Math.floor(orb.points)} pts`, 0, orb.radius * 0.35);
+        Object.values(standVault).forEach(p => drawOrb(p, true));
+        Object.values(activePlayers).forEach(p => drawOrb(p, false));
 
         ctx.restore();
+        requestAnimationFrame(render);
     }
 
     render();
