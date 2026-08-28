@@ -11,7 +11,6 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 let players = {};
 
-// قائمة الدول المتاحة مع أعلامها ومعالمها
 const countriesList = [
     { code: "SY", name: "سوريا", flag: "🇸🇾" },
     { code: "SA", name: "السعودية", flag: "🇸🇦" },
@@ -26,59 +25,40 @@ function getFlagEmoji(countryCode) {
     return found ? found.flag : "🌐";
 }
 
-// 1. توليد لاعبين/بوتات محاكاة لإضفاء الحيوية للميدان
-function spawnBotPlayer(idSuffix) {
-    const country = countriesList[Math.floor(Math.random() * countriesList.length)];
-    const playerId = 'bot_' + idSuffix;
-    const points = Math.floor(Math.random() * 45000) + 3000;
-
-    players[playerId] = {
-        id: playerId,
-        name: `King_${idSuffix}`,
+// إنشاء بوتات منافسة
+for (let i = 1; i <= 6; i++) {
+    const country = countriesList[i % countriesList.length];
+    const id = 'bot_' + i;
+    const pts = Math.floor(Math.random() * 20000) + 5000;
+    players[id] = {
+        id: id,
+        isBot: true,
+        name: `Bot_${i}`,
         country: { code: country.code, name: country.name, flag: country.flag },
-        points: points,
-        x: Math.random() * 5000 + 500,
-        y: Math.random() * 5000 + 500,
-        vx: (Math.random() - 0.5) * 5,
-        vy: (Math.random() - 0.5) * 5,
-        radius: Math.max(35, Math.sqrt(points) * 0.45)
+        points: pts,
+        x: Math.random() * 4000 + 1000,
+        y: Math.random() * 4000 + 1000,
+        vx: (Math.random() - 0.5) * 4,
+        vy: (Math.random() - 0.5) * 4,
+        radius: Math.max(35, Math.sqrt(pts) * 0.45)
     };
 }
 
-// إنشاء 8 بوتات عند بدء الخادم
-for (let i = 1; i <= 8; i++) {
-    spawnBotPlayer(i);
-}
-
-// 2. إدارة الاتصال الفعلي للاعبين عبر WebSocket
-wss.on('connection', async (ws, req) => {
-    const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
-    
-    let countryCode = "SY";
-    let countryName = "سوريا";
-    
-    try {
-        const geoRes = await fetch(`https://ipapi.co/${ip}/json/`);
-        const geoData = await geoRes.json();
-        if (geoData.country_code) {
-            countryCode = geoData.country_code;
-            countryName = geoData.country_name;
-        }
-    } catch (e) {}
-
-    const playerId = 'user_' + Math.random().toString(36).substr(2, 7);
-    const points = Math.floor(Math.random() * 25000) + 12000;
+wss.on('connection', (ws) => {
+    const playerId = 'user_' + Math.random().toString(36).substr(2, 6);
+    const startPoints = 15000; // رصيد البداية المربوط بالموقع
 
     players[playerId] = {
         id: playerId,
-        name: `أنت (اللاعب)`,
-        country: { code: countryCode, name: countryName, flag: getFlagEmoji(countryCode) },
-        points: points,
-        x: Math.random() * 4000 + 1000,
-        y: Math.random() * 4000 + 1000,
-        vx: (Math.random() - 0.5) * 3,
-        vy: (Math.random() - 0.5) * 3,
-        radius: Math.max(40, Math.sqrt(points) * 0.45)
+        isBot: false,
+        name: "أنت (اللاعب)",
+        country: { code: "SY", name: "سوريا", flag: "🇸🇾" },
+        points: startPoints,
+        x: 3000,
+        y: 3000,
+        vx: 0,
+        vy: 0,
+        radius: Math.max(35, Math.sqrt(startPoints) * 0.45)
     };
 
     ws.send(JSON.stringify({ type: 'INIT', selfId: playerId, players }));
@@ -86,36 +66,74 @@ wss.on('connection', async (ws, req) => {
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
-            // إمكانية تحديث نقاط أو إحداثيات اللاعب الحقيقي
-            if (data.type === 'UPDATE_SCORE' && players[playerId]) {
-                players[playerId].points = data.points;
-                players[playerId].radius = Math.max(35, Math.sqrt(data.points) * 0.45);
+            // تحريك الكرة باتجاه الماوس
+            if (data.type === 'TARGET' && players[playerId]) {
+                const p = players[playerId];
+                const dx = data.x - p.x;
+                const dy = data.y - p.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                if (dist > 10) {
+                    p.vx = (dx / dist) * 5;
+                    p.vy = (dy / dist) * 5;
+                } else {
+                    p.vx = 0; p.vy = 0;
+                }
             }
         } catch (err) {}
     });
 
-    ws.on('close', () => {
-        delete players[playerId];
-    });
+    ws.on('close', () => { delete players[playerId]; });
 });
 
-// 3. محاكة حركة الكرات وتغير النقاط المباشر (Game Loop)
+// Game Loop: تحريك ومعالجة التصادم والابتلاع
 setInterval(() => {
-    Object.values(players).forEach(p => {
+    const playerList = Object.values(players);
+
+    playerList.forEach(p => {
         p.x += p.vx;
         p.y += p.vy;
 
-        // ارتداد الكرات من الحدود
-        if (p.x < 150 || p.x > 5850) p.vx *= -1;
-        if (p.y < 150 || p.y > 5850) p.vy *= -1;
+        if (p.x < 100 || p.x > 5900) p.vx *= -1;
+        if (p.y < 100 || p.y > 5900) p.vy *= -1;
 
-        // تغير طفيف في النقاط لزيادة الحيوية
-        if (Math.random() < 0.05) {
-            p.points += Math.floor((Math.random() - 0.48) * 150);
-            p.points = Math.max(1000, p.points);
-            p.radius = Math.max(35, Math.sqrt(p.points) * 0.45);
+        if (p.isBot && Math.random() < 0.02) {
+            p.vx = (Math.random() - 0.5) * 4;
+            p.vy = (Math.random() - 0.5) * 4;
         }
     });
+
+    // معالجة تصادم وتأثير الابتلاع (Agar.io Mechanic)
+    for (let i = 0; i < playerList.length; i++) {
+        for (let j = i + 1; j < playerList.length; j++) {
+            const a = playerList[i];
+            const b = playerList[j];
+
+            const dx = a.x - b.x;
+            const dy = a.y - b.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            // عند تداخل الكرتين
+            if (dist < Math.abs(a.radius - b.radius) + 10) {
+                const bigger = a.radius > b.radius ? a : b;
+                const smaller = a.radius > b.radius ? b : a;
+
+                // الابتلاع يحدث إذا كانت إحداهما أكبر بـ 10% على الأقل
+                if (bigger.radius > smaller.radius * 1.1) {
+                    // خصم نقطة واحدة فقط رمزية وإضافتها للكبير
+                    smaller.points = Math.max(1, smaller.points - 1);
+                    bigger.points += 1;
+
+                    // تحديث الأقطار
+                    smaller.radius = Math.max(35, Math.sqrt(smaller.points) * 0.45);
+                    bigger.radius = Math.max(35, Math.sqrt(bigger.points) * 0.45);
+
+                    // إعادة ظهور الأصغر في مكان جديد بنفس حجمه المتبقي
+                    smaller.x = Math.random() * 5000 + 500;
+                    smaller.y = Math.random() * 5000 + 500;
+                }
+            }
+        }
+    }
 
     const payload = JSON.stringify({ type: 'SYNC', players });
     wss.clients.forEach(client => {
@@ -126,6 +144,4 @@ setInterval(() => {
 }, 40);
 
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-    console.log(`Dominance Engine running with Active Bots & Live Sync on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Gaming Engine live on port ${PORT}`));

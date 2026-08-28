@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Dominion Arena - Monument Orbs</title>
+    <title>Dominion Arena - Play Mode</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Tajawal:wght@500;700;900&display=swap" rel="stylesheet"/>
     <style>
@@ -11,7 +11,7 @@
         .glass-hud { background: rgba(15, 17, 23, 0.75); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); }
     </style>
 </head>
-<body class="text-white relative w-screen h-screen">
+<body class="text-white relative w-screen h-screen select-none">
 
     <!-- Top Dominance HUD -->
     <header class="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-6 glass-hud px-8 py-3 rounded-2xl shadow-2xl border border-cyan-500/30">
@@ -24,9 +24,9 @@
         </div>
         <div class="h-8 w-[1px] bg-white/10"></div>
         <div class="flex flex-col items-end">
-            <div class="text-[10px] uppercase text-gray-400 font-bold tracking-widest">حالة الاتصال بالسيرفر</div>
-            <div id="connectionStatus" class="text-sm font-bold text-emerald-400 flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> متصل بـ Render
+            <div class="text-[10px] uppercase text-gray-400 font-bold tracking-widest">وضع اللعب التفاعلي</div>
+            <div class="text-sm font-bold text-cyan-400 flex items-center gap-2">
+                🎮 حرك الماوس للتحكم بكرتك
             </div>
         </div>
     </header>
@@ -34,13 +34,13 @@
     <!-- Side Leaderboard HUD -->
     <aside class="absolute top-6 right-6 z-30 w-80 glass-hud p-5 rounded-2xl border border-white/10">
         <div class="flex justify-between items-center mb-4">
-            <h2 class="font-bold text-sm text-cyan-400 flex items-center gap-2">أعظم الأباطرة المباشرين</h2>
+            <h2 class="font-bold text-sm text-cyan-400">أعظم الأباطرة المباشرين</h2>
             <span class="text-xs text-gray-400 font-['Sora']" id="activePlayerCount">0 لاعب</span>
         </div>
         <div id="leaderboardList" class="space-y-2 text-xs"></div>
     </aside>
 
-    <!-- Bottom National Dominance Bar -->
+    <!-- Bottom Dominance Bar -->
     <footer class="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 w-11/12 max-w-4xl glass-hud p-4 rounded-2xl border border-white/10 flex flex-col gap-2">
         <div class="flex justify-between text-xs font-bold text-cyan-400">
             <span>ميزان الهيمنة الوطنية الجغرافي</span>
@@ -50,7 +50,7 @@
     </footer>
 
     <!-- Canvas Arena -->
-    <canvas id="worldCanvas" class="w-full h-full block cursor-grab active:cursor-grabbing"></canvas>
+    <canvas id="worldCanvas" class="w-full h-full block cursor-crosshair"></canvas>
 
 <script>
     const canvas = document.getElementById('worldCanvas');
@@ -67,8 +67,8 @@
 
     let camera = { x: WORLD_SIZE.width / 2, y: WORLD_SIZE.height / 2, zoom: 0.9 };
     let remotePlayers = {};
+    let selfId = null;
 
-    // مكتبة المعالم الحضارية المباشرة مقترنة برمز الدولة (ISO Code)
     const monumentImages = {};
     const countryLandmarks = {
         "SY": { name: "الجامع الأموي", url: "https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=400&q=80", color: "#00f5ff" },
@@ -79,7 +79,6 @@
         "IQ": { name: "ملوية سامراء", url: "https://images.unsplash.com/photo-1605649487212-47bdab064df7?auto=format&fit=crop&w=400&q=80", color: "#00dce5" }
     };
 
-    // تحميل الصور المحددة مسبقاً
     Object.keys(countryLandmarks).forEach(code => {
         const img = new Image();
         img.src = countryLandmarks[code].url;
@@ -92,23 +91,45 @@
 
     socket.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        if (data.type === 'INIT' || data.type === 'SYNC') {
+        if (data.type === 'INIT') {
+            selfId = data.selfId;
+            remotePlayers = data.players;
+        } else if (data.type === 'SYNC') {
             remotePlayers = data.players;
             updateHUD();
         }
     };
 
+    // إرسال موقع الماوس إلى السيرفر لتحريك الكرة
+    window.addEventListener('mousemove', (e) => {
+        if (!selfId || !remotePlayers[selfId]) return;
+        
+        // تحويل إحداثيات الشاشة إلى إحداثيات عالم اللعبة
+        const worldX = (e.clientX - screenWidth / 2) / camera.zoom + camera.x;
+        const worldY = (e.clientY - screenHeight / 2) / camera.zoom + camera.y;
+
+        socket.send(JSON.stringify({ type: 'TARGET', x: worldX, y: worldY }));
+    });
+
     function updateHUD() {
         const playerArray = Object.values(remotePlayers).sort((a, b) => b.points - a.points);
         document.getElementById('activePlayerCount').innerText = `${playerArray.length} لاعب`;
+
+        if (selfId && remotePlayers[selfId]) {
+            // الكاميرا تتبع كرة اللاعب دائماً
+            const me = remotePlayers[selfId];
+            camera.x += (me.x - camera.x) * 0.1;
+            camera.y += (me.y - camera.y) * 0.1;
+        } else if (playerArray.length > 0) {
+            const top = playerArray[0];
+            camera.x += (top.x - camera.x) * 0.05;
+            camera.y += (top.y - camera.y) * 0.05;
+        }
 
         if (playerArray.length > 0) {
             const top = playerArray[0];
             document.getElementById('dominantFlag').innerText = top.country.flag;
             document.getElementById('dominantCountry').innerText = `دولة ${top.country.name}`;
-
-            camera.x += (top.x - camera.x) * 0.05;
-            camera.y += (top.y - camera.y) * 0.05;
         }
 
         const listContainer = document.getElementById('leaderboardList');
@@ -118,9 +139,9 @@
             row.className = "flex justify-between items-center bg-white/5 p-2 rounded-xl border border-white/5";
             row.innerHTML = `
                 <div class="flex items-center gap-2">
-                    <span class="font-bold font-['Sora'] text-cyan-400">#${idx + 1}</span>
+                    <span class="font-bold font-['Sora'] ${p.id === selfId ? 'text-emerald-400' : 'text-cyan-400'}">#${idx + 1}</span>
                     <span>${p.country.flag}</span>
-                    <span class="font-bold text-white">${p.name}</span>
+                    <span class="font-bold text-white">${p.id === selfId ? 'أنت 👑' : p.name}</span>
                 </div>
                 <span class="font-['Sora'] text-cyan-300 font-bold">${p.points.toLocaleString()}</span>
             `;
@@ -153,7 +174,7 @@
             segment.style.width = `${percentage}%`;
             segment.style.backgroundColor = color;
             segment.title = `${code}: ${percentage}%`;
-            segment.className = "h-full transition-all duration-500";
+            segment.className = "h-full transition-all duration-300";
             barContainer.appendChild(segment);
         });
 
@@ -171,7 +192,7 @@
         ctx.scale(camera.zoom, camera.zoom);
         ctx.translate(-camera.x, -camera.y);
 
-        // 1. شبكة الخريطة
+        // الشبكة والحدود
         ctx.strokeStyle = "rgba(0, 245, 255, 0.04)";
         ctx.lineWidth = 2;
         for (let x = 0; x <= WORLD_SIZE.width; x += 150) {
@@ -181,7 +202,6 @@
             ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WORLD_SIZE.width, y); ctx.stroke();
         }
 
-        // 2. حدود الميدان
         ctx.strokeStyle = "#00f5ff";
         ctx.lineWidth = 10;
         ctx.shadowBlur = 20;
@@ -189,7 +209,7 @@
         ctx.strokeRect(0, 0, WORLD_SIZE.width, WORLD_SIZE.height);
         ctx.shadowBlur = 0;
 
-        // 3. رسم الكرات الكريستالية التي تعرض المعالم الحضارية
+        // رسم الكرات
         Object.values(remotePlayers).forEach(p => {
             ctx.save();
             ctx.translate(p.x, p.y);
@@ -198,17 +218,14 @@
             const img = monumentImages[countryCode];
             const themeColor = countryLandmarks[countryCode]?.color || "#00f5ff";
 
-            // قناع دائرية الكرة (Clipping Path)
             ctx.beginPath();
             ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
             ctx.clip();
 
-            // رسم صورة المعلم الحضاري وتكبير تفاصيله بحسب حجم الكرة
             if (img && img.complete) {
                 const scale = Math.max(1, p.radius / 30);
                 const drawWidth = p.radius * 2 * scale;
                 const drawHeight = p.radius * 2 * scale;
-                
                 ctx.globalAlpha = 0.85;
                 ctx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
                 ctx.globalAlpha = 1.0;
@@ -217,7 +234,6 @@
                 ctx.fill();
             }
 
-            // تدرج زجاجي ثلاثي الأبعاد فوق الصورة (Glassmorphic Overlay)
             let glassGrad = ctx.createRadialGradient(-p.radius * 0.3, -p.radius * 0.3, 2, 0, 0, p.radius);
             glassGrad.addColorStop(0, "rgba(255, 255, 255, 0.45)");
             glassGrad.addColorStop(0.5, "transparent");
@@ -225,14 +241,13 @@
             ctx.fillStyle = glassGrad;
             ctx.beginPath(); ctx.arc(0, 0, p.radius, 0, Math.PI * 2); ctx.fill();
 
-            // إطار نيون براق حول الكرة
+            // تمييز كرة اللاعب بإطار ذهبي مضاعف
             ctx.lineWidth = Math.max(3, p.radius * 0.08);
-            ctx.strokeStyle = themeColor;
-            ctx.shadowBlur = 25;
-            ctx.shadowColor = themeColor;
+            ctx.strokeStyle = p.id === selfId ? "#ffd700" : themeColor;
+            ctx.shadowBlur = p.id === selfId ? 35 : 20;
+            ctx.shadowColor = p.id === selfId ? "#ffd700" : themeColor;
             ctx.stroke();
 
-            // طباعة الاسم والعلم والنقاط بوضوح
             ctx.shadowBlur = 0;
             ctx.fillStyle = "#ffffff";
             ctx.textAlign = "center";
@@ -240,10 +255,10 @@
 
             const fontSize = Math.max(12, p.radius * 0.24);
             ctx.font = `bold ${fontSize}px 'Tajawal'`;
-            ctx.fillText(`${p.country.flag} ${p.name}`, 0, -fontSize * 0.4);
+            ctx.fillText(`${p.country.flag} ${p.id === selfId ? 'أنت' : p.name}`, 0, -fontSize * 0.4);
 
             ctx.font = `bold ${fontSize * 0.75}px 'Sora'`;
-            ctx.fillStyle = "#00ffff";
+            ctx.fillStyle = p.id === selfId ? "#ffd700" : "#00ffff";
             ctx.fillText(`${p.points.toLocaleString()} PTS`, 0, fontSize * 0.65);
 
             ctx.restore();
