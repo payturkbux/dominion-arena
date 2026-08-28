@@ -47,41 +47,55 @@
     window.addEventListener('resize', resize);
     resize();
 
-    // 🏟️ أبعاد حدود الملعب المعتمدة والمطابقة للسيرفر
-    const PITCH_BOUNDS = { minX: 1800, maxX: 6200, minY: 1800, maxY: 6200 };
+    // 🏟️ أبعاد حدود الملعب الرسمية
+    const PITCH_BOUNDS = {
+        minX: 500,
+        maxX: 6700,
+        minY: 1900,
+        maxY: 5500
+    };
 
     // الكاميرا الديناميكية
-    let camera = { x: 4000, y: 4000, zoom: 0.25, targetZoom: 0.25 };
-    const MIN_ZOOM = 0.10;
+    let camera = { x: 3600, y: 3000, zoom: 0.38, targetZoom: 0.38 };
+    const MIN_ZOOM = 0.20;
     const MAX_ZOOM = 1.20;
 
     let activePlayers = {};
     let standVault = {};
-    let dynamicStands = {};
     let selfId = null;
+
+    const monumentImages = {};
+    const countryLandmarks = {
+        "SY": { name: "سوريا", flag: "🇸🇾", standX: 1200, color: "#00f5ff", url: "https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=400&q=80" },
+        "SA": { name: "السعودية", flag: "🇸🇦", standX: 2400, color: "#3bff17", url: "https://images.unsplash.com/photo-1586724237569-f3d0c1dee8c6?auto=format&fit=crop&w=400&q=80" },
+        "TR": { name: "تركيا", flag: "🇹🇷", standX: 3600, color: "#ff4b89", url: "https://images.unsplash.com/photo-1541432901042-2d8bd64b4a9b?auto=format&fit=crop&w=400&q=80" },
+        "EG": { name: "مصر", flag: "🇪🇬", standX: 4800, color: "#ffb1c3", url: "https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=400&q=80" },
+        "AE": { name: "الإمارات", flag: "🇦🇪", standX: 6000, color: "#ffd9e0", url: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=400&q=80" }
+    };
+
+    Object.keys(countryLandmarks).forEach(code => {
+        const img = new Image();
+        img.src = countryLandmarks[code].url;
+        monumentImages[code] = img;
+    });
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const socket = new WebSocket(`${protocol}//${window.location.host}`);
 
     socket.onmessage = (event) => {
-        try {
-            const data = JSON.parse(event.data);
-            if (data.type === 'INIT') {
-                selfId = data.selfId;
-            } else if (data.type === 'SYNC') {
-                activePlayers = data.activePlayers || {};
-                standVault = data.standVault || {};
-                dynamicStands = data.dynamicStands || {};
-                
-                const myOrb = activePlayers[selfId] || standVault[selfId];
-                if (myOrb) {
-                    camera.x += (myOrb.x - camera.x) * 0.1;
-                    camera.y += (myOrb.y - camera.y) * 0.1;
-                }
-                updateLeaderboard();
+        const data = JSON.parse(event.data);
+        if (data.type === 'INIT') {
+            selfId = data.selfId;
+        } else if (data.type === 'SYNC') {
+            activePlayers = data.activePlayers || {};
+            standVault = data.standVault || {};
+            
+            const myOrb = activePlayers[selfId] || standVault[selfId];
+            if (myOrb) {
+                camera.x += (myOrb.x - camera.x) * 0.1;
+                camera.y += (myOrb.y - camera.y) * 0.1;
             }
-        } catch(e) {
-            console.error("خطأ في استقبال البيانات:", e);
+            updateLeaderboard();
         }
     };
 
@@ -92,18 +106,27 @@
         camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.targetZoom * zoomFactor));
     }, { passive: false });
 
+    /**
+     * 🎯 تحويل إحداثيات الشاشة إلى إحداثيات العالم
+     */
     function getWorldCoordinates(clientX, clientY) {
         const worldX = (clientX - screenWidth / 2) / camera.zoom + camera.x;
         const worldY = (clientY - screenHeight / 2) / camera.zoom + camera.y;
         return { x: worldX, y: worldY };
     }
 
+    /**
+     * 🛡️ تقييد الهدف داخل حدود خطوط الملعب مع خصم نصف قطر الكرة
+     */
     function clampToPitch(x, y, radius = 40) {
         const clampedX = Math.max(PITCH_BOUNDS.minX + radius, Math.min(PITCH_BOUNDS.maxX - radius, x));
         const clampedY = Math.max(PITCH_BOUNDS.minY + radius, Math.min(PITCH_BOUNDS.maxY - radius, y));
         return { x: clampedX, y: clampedY };
     }
 
+    /**
+     * ⚔️ معالجة النقر والتاتش للنزول أو التوجيه مع التقييد الحازم
+     */
     function handleActionPointer(clientX, clientY) {
         if (!selfId) return;
 
@@ -129,9 +152,14 @@
         }
     }
 
-    window.addEventListener('mousedown', (e) => handleActionPointer(e.clientX, e.clientY));
+    window.addEventListener('mousedown', (e) => {
+        handleActionPointer(e.clientX, e.clientY);
+    });
+
     window.addEventListener('touchstart', (e) => {
-        if (e.touches && e.touches.length > 0) handleActionPointer(e.touches[0].clientX, e.touches[0].clientY);
+        if (e.touches && e.touches.length > 0) {
+            handleActionPointer(e.touches[0].clientX, e.touches[0].clientY);
+        }
     }, { passive: true });
 
     window.addEventListener('mousemove', (e) => {
@@ -145,18 +173,18 @@
     function updateLeaderboard() {
         const listEl = document.getElementById('leaderboardList');
         if (!listEl) return;
-
+        
         const allEntities = [...Object.values(activePlayers), ...Object.values(standVault)];
         allEntities.sort((a, b) => (b.points || 0) - (a.points || 0));
         const top5 = allEntities.slice(0, 5);
 
         listEl.innerHTML = top5.map((item, index) => {
             const isMe = item.id === selfId;
-            const flag = item.country?.flag || '🌐';
-            const name = item.name || 'لاعب';
-            const pts = (item.points || 0).toLocaleString();
             const statusTag = item.inStand ? '<span class="text-[9px] text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">مدرج</span>' : '<span class="text-[9px] text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded">ملعب</span>';
-            
+            const flag = (item.country && item.country.flag) ? item.country.flag : '🚩';
+            const name = item.name || 'لاعب';
+            const points = item.points ? item.points.toLocaleString() : 0;
+
             return `
                 <li class="flex items-center justify-between p-2 rounded-lg ${isMe ? 'bg-amber-500/20 border border-amber-500/50' : 'bg-white/5'}">
                     <div class="flex items-center gap-2 truncate">
@@ -165,105 +193,138 @@
                     </div>
                     <div class="flex items-center gap-2">
                         ${statusTag}
-                        <span class="font-mono font-bold text-cyan-300">${pts}</span>
+                        <span class="font-mono font-bold text-cyan-300">${points}</span>
                     </div>
                 </li>
             `;
         }).join('');
     }
 
-    // 🎨 رسم أرضية الملعب
     function drawStadiumPitch() {
         ctx.fillStyle = "#0c1220";
-        ctx.fillRect(-5000, -5000, 18000, 18000);
+        ctx.fillRect(-3000, -3000, 13000, 12000);
 
-        let turfGrad = ctx.createLinearGradient(0, PITCH_BOUNDS.minY, 0, PITCH_BOUNDS.maxY);
+        let lightGrad = ctx.createRadialGradient(3600, 3000, 500, 3600, 3000, 5500);
+        lightGrad.addColorStop(0, "rgba(0, 245, 255, 0.1)");
+        lightGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+        ctx.fillStyle = lightGrad;
+        ctx.fillRect(-3000, -3000, 13000, 12000);
+
+        let turfGrad = ctx.createLinearGradient(0, 1900, 0, 5500);
         turfGrad.addColorStop(0, "#0a3320");
         turfGrad.addColorStop(0.5, "#0e442b");
         turfGrad.addColorStop(1, "#0a3320");
         ctx.fillStyle = turfGrad;
-        ctx.fillRect(PITCH_BOUNDS.minX, PITCH_BOUNDS.minY, PITCH_BOUNDS.maxX - PITCH_BOUNDS.minX, PITCH_BOUNDS.maxY - PITCH_BOUNDS.minY);
+        ctx.fillRect(500, 1900, 6200, 3600);
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
+        for (let x = 500; x < 6700; x += 300) {
+            ctx.fillRect(x, 1900, 150, 3600);
+        }
 
         ctx.strokeStyle = "#00f5ff";
         ctx.lineWidth = 14;
-        ctx.shadowBlur = 25;
+        ctx.shadowBlur = 30;
         ctx.shadowColor = "#00f5ff";
-        ctx.strokeRect(PITCH_BOUNDS.minX, PITCH_BOUNDS.minY, PITCH_BOUNDS.maxX - PITCH_BOUNDS.minX, PITCH_BOUNDS.maxY - PITCH_BOUNDS.minY);
+        ctx.strokeRect(500, 1900, 6200, 3600);
         ctx.shadowBlur = 0;
-
-        const centerX = (PITCH_BOUNDS.minX + PITCH_BOUNDS.maxX) / 2;
-        const centerY = (PITCH_BOUNDS.minY + PITCH_BOUNDS.maxY) / 2;
 
         ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
         ctx.lineWidth = 10;
-        ctx.beginPath(); ctx.moveTo(centerX, PITCH_BOUNDS.minY); ctx.lineTo(centerX, PITCH_BOUNDS.maxY); ctx.stroke();
-        ctx.beginPath(); ctx.arc(centerX, centerY, 450, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(3600, 1900); ctx.lineTo(3600, 5500); ctx.stroke();
+        ctx.beginPath(); ctx.arc(3600, 3700, 450, 0, Math.PI * 2); ctx.stroke();
     }
 
-    // 🏛️ رسم هيكلية مدرجات الدول الديناميكية المرسلة من السيرفر
-    function drawDynamicStands() {
-        Object.values(dynamicStands).forEach(stand => {
-            ctx.save();
-            ctx.fillStyle = "#111827";
-            ctx.strokeStyle = stand.color || "#00f5ff";
+    function drawStandsStructure() {
+        Object.keys(countryLandmarks).forEach(code => {
+            const c = countryLandmarks[code];
+            
+            let standGrad = ctx.createLinearGradient(c.standX - 450, 700, c.standX + 450, 1600);
+            standGrad.addColorStop(0, "#192234");
+            standGrad.addColorStop(1, "#0f1624");
+            ctx.fillStyle = standGrad;
+            
+            ctx.beginPath();
+            // إصلاح توافق roundRect للعمل على جميع المتصفحات
+            if (ctx.roundRect) {
+                ctx.roundRect(c.standX - 450, 750, 900, 850, 24);
+            } else {
+                ctx.rect(c.standX - 450, 750, 900, 850);
+            }
+            ctx.fill();
+
+            ctx.strokeStyle = c.color;
             ctx.lineWidth = 4;
             ctx.shadowBlur = 15;
-            ctx.shadowColor = ctx.strokeStyle;
-
-            ctx.beginPath();
-            ctx.roundRect(stand.x - 500, stand.y - 400, 1000, 800, 20);
-            ctx.fill();
+            ctx.shadowColor = c.color;
             ctx.stroke();
             ctx.shadowBlur = 0;
 
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+            ctx.lineWidth = 2;
+            for (let y = 850; y < 1500; y += 140) {
+                ctx.beginPath(); ctx.moveTo(c.standX - 420, y); ctx.lineTo(c.standX + 420, y); ctx.stroke();
+            }
+
             ctx.fillStyle = "#ffffff";
-            ctx.font = "bold 36px 'Tajawal'";
+            ctx.font = "bold 34px 'Tajawal'";
             ctx.textAlign = "center";
-            ctx.fillText(`${stand.flag} مدرج ${stand.name}`, stand.x, stand.y - 320);
-            ctx.restore();
+            ctx.fillText(`${c.flag} مدرج VIP - ${c.name}`, c.standX, 810);
         });
     }
 
-    // 🔮 رسم الكرة (سواء في المدرج أو في الملعب)
     function drawOrb(p, isStand) {
-        if (!p || p.x === undefined || p.y === undefined) return;
-
+        if (!p || typeof p.x !== 'number' || typeof p.y !== 'number') return;
+        
         ctx.save();
         ctx.translate(p.x, p.y);
 
-        const radius = p.radius || 35;
-        const flag = p.country?.flag || '🌐';
-        const color = p.country?.color || '#00f5ff';
+        const radius = p.radius || 40;
+        const countryCode = (p.country && p.country.code) ? p.country.code : "SY";
+        const img = monumentImages[countryCode];
+        const themeColor = countryLandmarks[countryCode]?.color || "#00f5ff";
 
-        // جسم الكرة
+        ctx.beginPath();
+        ctx.arc(0, 0, radius, 0, Math.PI * 2);
+        ctx.clip();
+
+        if (img && img.complete && img.naturalWidth !== 0) {
+            const scale = Math.max(1, radius / 30);
+            const drawWidth = radius * 2 * scale;
+            const drawHeight = radius * 2 * scale;
+            ctx.globalAlpha = isStand ? 0.8 : 0.95;
+            ctx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+            ctx.globalAlpha = 1.0;
+        }
+
         let glassGrad = ctx.createRadialGradient(-radius * 0.3, -radius * 0.3, 2, 0, 0, radius);
-        glassGrad.addColorStop(0, "rgba(255, 255, 255, 0.6)");
-        glassGrad.addColorStop(1, color);
-        
+        glassGrad.addColorStop(0, "rgba(255, 255, 255, 0.45)");
+        glassGrad.addColorStop(1, "rgba(0, 0, 0, 0.75)");
         ctx.fillStyle = glassGrad;
-        ctx.beginPath(); 
-        ctx.arc(0, 0, radius, 0, Math.PI * 2); 
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
 
         ctx.lineWidth = Math.max(3, radius * 0.08);
-        ctx.strokeStyle = isStand ? "rgba(255, 255, 255, 0.4)" : (p.id === selfId ? "#ffd700" : "#ffffff");
-        ctx.shadowBlur = isStand ? 5 : (p.id === selfId ? 25 : 12);
+        ctx.strokeStyle = isStand ? "rgba(255, 255, 255, 0.5)" : (p.id === selfId ? "#ffd700" : themeColor);
+        ctx.shadowBlur = isStand ? 8 : (p.id === selfId ? 30 : 20);
         ctx.shadowColor = ctx.strokeStyle;
         ctx.stroke();
 
-        // النص والبيانات فوق الكرة
         ctx.shadowBlur = 0;
         ctx.fillStyle = "#ffffff";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        
-        const fontSize = Math.max(11, radius * 0.25);
+        const fontSize = Math.max(12, radius * 0.23);
         ctx.font = `bold ${fontSize}px 'Tajawal'`;
-        ctx.fillText(`${flag} ${p.name || ''}`, 0, -fontSize * 0.4);
+        
+        const flag = (p.country && p.country.flag) ? p.country.flag : '';
+        const name = p.name || 'لاعب';
+        const points = p.points ? p.points.toLocaleString() : 0;
+
+        ctx.fillText(`${flag} ${name}`, 0, -fontSize * 0.4);
 
         ctx.font = `bold ${fontSize * 0.75}px 'Sora'`;
         ctx.fillStyle = isStand ? "#cbd5e0" : "#00ffff";
-        ctx.fillText(`${(p.points || 0).toLocaleString()} PTS`, 0, fontSize * 0.65);
+        ctx.fillText(`${points} PTS`, 0, fontSize * 0.65);
 
         ctx.restore();
     }
@@ -278,12 +339,9 @@
         ctx.translate(-camera.x, -camera.y);
 
         drawStadiumPitch();
-        drawDynamicStands();
+        drawStandsStructure();
 
-        // 🔴 رسم جميع كرات الحسابات الموجودة بالمدرجات
         Object.values(standVault).forEach(p => drawOrb(p, true));
-        
-        // 🟢 رسم الكرات النشطة داخل الملعب
         Object.values(activePlayers).forEach(p => drawOrb(p, false));
 
         ctx.restore();
