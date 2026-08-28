@@ -1,276 +1,114 @@
-require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
-const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
-
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_KEY;
-
-if (!SUPABASE_URL || !SUPABASE_KEY) {
-    console.error('[Supabase Critical Error] لم يتم العثور على متغيرات البيئة!');
-}
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static('public'));
 
-let activePlayers = {}; 
-let standVault = {};    
-let dynamicStands = {}; 
+// ⚡ قراءة المفاتيح مباشرة من متغيرة البيئة في Render
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
-const PITCH = { minX: 1800, maxX: 6200, minY: 1800, maxY: 6200 };
+const STAND_LOCATIONS = {
+    "SY": { x: 1200, y: 1100 },
+    "SA": { x: 2400, y: 1100 },
+    "TR": { x: 3600, y: 1100 },
+    "EG": { x: 4800, y: 1100 },
+    "AE": { x: 6000, y: 1100 }
+};
 
-async function savePlayerToSupabase(player) {
-    if (!player || !player.id) return;
-    try {
-        await supabase
-            .from('profiles')
-            .update({ points_balance: player.points })
-            .eq('id', player.id);
-    } catch (err) {
-        console.error('[Supabase Exception]:', err);
-    }
-}
-
-function calculateRadius(points) {
-    const pts = Math.max(0, points || 0);
-    return Math.max(35, Math.sqrt(pts) * 0.45);
-}
-
-function getOrCreateCountryStand(countryCode, countryName, flag, countryImage) {
-    const code = (countryCode || 'GLOBAL').toUpperCase();
-    if (!dynamicStands[code]) {
-        const standIndex = Object.keys(dynamicStands).length;
-        const side = standIndex % 4;
-        const indexOnSide = Math.floor(standIndex / 4);
-        const spacing = 1200;
-        let baseX = 0, baseY = 0;
-
-        if (side === 0) { baseX = PITCH.minX + 600 + (indexOnSide * spacing); baseY = PITCH.minY - 700; }
-        else if (side === 1) { baseX = PITCH.maxX + 700; baseY = PITCH.minY + 600 + (indexOnSide * spacing); }
-        else if (side === 2) { baseX = PITCH.minX + 600 + (indexOnSide * spacing); baseY = PITCH.maxY + 700; }
-        else { baseX = PITCH.minX - 700; baseY = PITCH.minY + 600 + (indexOnSide * spacing); }
-
-        dynamicStands[code] = {
-            code: code,
-            name: countryName || code,
-            flag: flag || '🌐',
-            countryImage: countryImage || null,
-            side: side,
-            x: baseX,
-            y: baseY,
-            color: `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}`
-        };
-    }
-    return dynamicStands[code];
-}
-
-function recalculateStandPositions(countryCode) {
-    const code = (countryCode || 'GLOBAL').toUpperCase();
-    const members = Object.values(standVault).filter(p => p.country.code === code);
-    const stand = dynamicStands[code];
-    if (!stand) return;
-
-    members.sort((a, b) => b.points - a.points);
-    const cols = Math.max(3, Math.ceil(Math.sqrt(members.length)));
-    members.forEach((p, idx) => {
-        const row = Math.floor(idx / cols);
-        const col = idx % cols;
-        if (stand.side === 0 || stand.side === 2) {
-            p.x = stand.x + (col - (cols - 1) / 2) * 180;
-            p.y = stand.y + (stand.side === 0 ? -row * 150 : row * 150);
-        } else {
-            p.x = stand.x + (stand.side === 1 ? row * 150 : -row * 150);
-            p.y = stand.y + (col - (cols - 1) / 2) * 180;
-        }
-    });
-}
-
-function syncTaralaliUserToStand(userData) {
-    const { userId, name, countryCode, countryName, flag, countryImage, points, tier } = userData;
-    const countryObj = getOrCreateCountryStand(countryCode, countryName, flag, countryImage);
-
-    if (!activePlayers[userId]) {
-        const currentPoints = points !== undefined ? points : 1000;
-        standVault[userId] = {
-            id: userId,
-            name: name || `عضو_${userId.toString().substr(0, 4)}`,
-            country: countryObj,
-            points: currentPoints,
-            tier: tier || 'Bronze', // 🏅 رتبة اللاعب من Supabase (Silver / Bronze...)
-            inStand: true,
-            x: countryObj.x,
-            y: countryObj.y,
-            vx: 0,
-            vy: 0,
-            radius: calculateRadius(currentPoints)
-        };
-        recalculateStandPositions(countryObj.code);
-    }
-}
+let activePlayers = {};
+let standVault = {};
 
 wss.on('connection', async (ws, req) => {
-    const urlParams = new URLSearchParams(req.url.replace('/?', ''));
+    const urlParams = new URLSearchParams(req.url.replace(/^.*\?/, ''));
     const userId = urlParams.get('userId');
+    const socketId = userId || 'user_' + Math.random().toString(36).substr(2, 9);
 
-    if (!userId) {
-        ws.close();
-        return;
-    }
+    ws.id = socketId;
 
-    let dbUser = null;
-    try {
+    let userData = {
+        name: 'لاعب جديد',
+        points: 100,
+        tier: 'Bronze',
+        countryCode: 'SY'
+    };
+
+    if (userId) {
         const { data, error } = await supabase
             .from('profiles')
-            .select('*')
+            .select('display_name, points_balance, tier, country_code')
             .eq('id', userId)
             .single();
 
-        if (!error && data) {
-            dbUser = data;
+        if (data && !error) {
+            userData.name = data.display_name || userData.name;
+            userData.points = data.points_balance ?? userData.points;
+            userData.tier = data.tier || userData.tier;
+            userData.countryCode = data.country_code || userData.countryCode;
         }
-    } catch (e) {
-        console.error('[Supabase Exception]:', e);
     }
 
-    const countryCode = (urlParams.get('country') || 'SY').toUpperCase();
-    const countryName = urlParams.get('countryName') || countryCode;
-    const flag = urlParams.get('flag') || '🇸🇾';
-    const countryImage = urlParams.get('countryImage') || null;
-    
-    // سحب display_name و points_balance و tier الحقيقية من الصورة
-    const username = dbUser?.display_name || dbUser?.username || urlParams.get('name') || `لاعب_${userId.substr(0, 4)}`;
-    const userPoints = dbUser?.points_balance !== undefined ? Number(dbUser.points_balance) : (parseInt(urlParams.get('points'), 10) || 1000);
-    const userTier = dbUser?.tier || 'Bronze';
+    const initialStand = STAND_LOCATIONS[userData.countryCode] || STAND_LOCATIONS["SY"];
 
-    syncTaralaliUserToStand({
-        userId: userId,
-        name: username,
-        countryCode: countryCode,
-        countryName: countryName,
-        flag: flag,
-        countryImage: countryImage,
-        points: userPoints,
-        tier: userTier
-    });
+    standVault[socketId] = {
+        id: socketId,
+        name: userData.name,
+        points: userData.points,
+        tier: userData.tier,
+        inStand: true,
+        x: initialStand.x + (Math.random() * 100 - 50),
+        y: initialStand.y + (Math.random() * 100 - 50),
+        radius: 40,
+        country: { code: userData.countryCode }
+    };
 
-    ws.send(JSON.stringify({ type: 'INIT', selfId: userId }));
+    ws.send(JSON.stringify({ type: 'INIT', selfId: socketId }));
 
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
-
-            if (data.type === 'ENTER_ARENA' && standVault[userId]) {
-                const player = standVault[userId];
-                player.inStand = false;
-                player.x = PITCH.minX + 200 + Math.random() * (PITCH.maxX - PITCH.minX - 400);
-                player.y = PITCH.minY + 200 + Math.random() * (PITCH.maxY - PITCH.minY - 400);
-                player.vx = 0;
-                player.vy = 0;
-                activePlayers[userId] = player;
-                delete standVault[userId];
-                recalculateStandPositions(player.country.code);
-            }
-
-            if (data.type === 'TARGET' && activePlayers[userId]) {
-                const player = activePlayers[userId];
-                const dx = data.x - player.x;
-                const dy = data.y - player.y;
-                const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist > 15) {
-                    const speed = Math.max(3, 9 - (player.radius * 0.03));
-                    player.vx = (dx / dist) * speed;
-                    player.vy = (dy / dist) * speed;
-                } else {
-                    player.vx = 0;
-                    player.vy = 0;
+            if (data.type === 'ENTER_ARENA') {
+                if (standVault[socketId]) {
+                    const p = standVault[socketId];
+                    delete standVault[socketId];
+                    p.inStand = false;
+                    p.x = data.targetX || 3600;
+                    p.y = data.targetY || 3700;
+                    p.targetX = p.x;
+                    p.targetY = p.y;
+                    activePlayers[socketId] = p;
+                }
+            } else if (data.type === 'TARGET') {
+                if (activePlayers[socketId]) {
+                    activePlayers[socketId].targetX = data.x;
+                    activePlayers[socketId].targetY = data.y;
                 }
             }
-
-            if (data.type === 'UPDATE_WALLET_POINTS') {
-                const targetId = data.targetUserId || userId;
-                const newPoints = data.newPoints;
-                const targetOrb = activePlayers[targetId] || standVault[targetId];
-                if (targetOrb) {
-                    targetOrb.points = newPoints;
-                    targetOrb.radius = calculateRadius(newPoints);
-                    if (targetOrb.inStand) recalculateStandPositions(targetOrb.country.code);
-                    savePlayerToSupabase(targetOrb);
-                }
-            }
-        } catch (err) {
-            console.error('Error processing message:', err);
-        }
+        } catch (e) {}
     });
 
-    ws.on('close', async () => {
-        const player = activePlayers[userId] || standVault[userId];
-        if (player) {
-            await savePlayerToSupabase(player);
-            const countryCode = player.country.code;
-            delete activePlayers[userId];
-            delete standVault[userId];
-            recalculateStandPositions(countryCode);
-        }
+    ws.on('close', () => {
+        delete activePlayers[socketId];
+        delete standVault[socketId];
     });
 });
 
 setInterval(() => {
-    const activeList = Object.values(activePlayers);
-
-    activeList.forEach(p => {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.vx *= 0.98;
-        p.vy *= 0.98;
-        if (p.x - p.radius < PITCH.minX) { p.x = PITCH.minX + p.radius; p.vx = 0; }
-        if (p.x + p.radius > PITCH.maxX) { p.x = PITCH.maxX - p.radius; p.vx = 0; }
-        if (p.y - p.radius < PITCH.minY) { p.y = PITCH.minY + p.radius; p.vx = 0; }
-        if (p.y + p.radius > PITCH.maxY) { p.y = PITCH.maxY - p.radius; p.vy = 0; }
-    });
-
-    for (let i = 0; i < activeList.length; i++) {
-        for (let j = i + 1; j < activeList.length; j++) {
-            const a = activeList[i];
-            const b = activeList[j];
-            const dx = a.x - b.x;
-            const dy = a.y - b.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-
-            if (dist < Math.abs(a.radius - b.radius) + 5) {
-                const bigger = a.radius > b.radius ? a : b;
-                const smaller = a.radius > b.radius ? b : a;
-
-                if (bigger.radius > smaller.radius * 1.08) {
-                    smaller.points = Math.max(0, smaller.points - 1);
-                    bigger.points += 1;
-                    smaller.radius = calculateRadius(smaller.points);
-                    bigger.radius = calculateRadius(bigger.points);
-                    smaller.inStand = true;
-                    smaller.vx = 0;
-                    smaller.vy = 0;
-
-                    standVault[smaller.id] = smaller;
-                    delete activePlayers[smaller.id];
-                    recalculateStandPositions(smaller.country.code);
-                    savePlayerToSupabase(smaller);
-                    savePlayerToSupabase(bigger);
-                }
-            }
+    Object.values(activePlayers).forEach(p => {
+        if (p.targetX !== undefined && p.targetY !== undefined) {
+            p.x += (p.targetX - p.x) * 0.15;
+            p.y += (p.targetY - p.y) * 0.15;
         }
-    }
+    });
 
     const payload = JSON.stringify({
         type: 'SYNC',
-        activePlayers: activePlayers,
-        standVault: standVault,
-        dynamicStands: dynamicStands
+        activePlayers,
+        standVault
     });
 
     wss.clients.forEach(client => {
@@ -278,9 +116,7 @@ setInterval(() => {
             client.send(payload);
         }
     });
-}, 40);
+}, 1000 / 30);
 
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => {
-    console.log(`[Taralali Server] Connected to profiles on port ${PORT}`);
-});
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
