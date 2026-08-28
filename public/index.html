@@ -1,356 +1,97 @@
 <!DOCTYPE html>
-<html class="dark" lang="ar" dir="rtl">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
-    <title>Dominion Arena Stadium</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Tajawal:wght@500;700;900&display=swap" rel="stylesheet"/>
+    <title>Dominion Arena</title>
     <style>
-        body { font-family: 'Tajawal', sans-serif; background-color: #0c101c; margin: 0; overflow: hidden; touch-action: none; }
-        .glass-hud { background: rgba(10, 14, 23, 0.85); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.12); }
+        body { margin: 0; background: #0c101c; color: white; font-family: sans-serif; overflow: hidden; }
+        #hud { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.8); p: 15px; border-radius: 8px; width: 220px; z-index: 10; }
+        #hud h3 { margin: 0 0 10px 0; font-size: 14px; color: #ffd700; }
+        .player-item { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 12px; }
+        canvas { display: block; }
     </style>
 </head>
-<body class="text-white relative w-screen h-screen select-none">
+<body>
 
-    <!-- HUD Header -->
-    <header class="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-6 glass-hud px-8 py-3 rounded-2xl shadow-2xl border border-cyan-500/30">
-        <div class="flex items-center gap-3">
-            <span class="text-3xl">⚔️</span>
-            <div>
-                <div id="hudStatusTitle" class="text-[10px] uppercase text-cyan-400 font-bold tracking-widest">كاميرا تكتيكية ديناميكية</div>
-                <div id="hudActionTip" class="text-xs font-bold text-emerald-400">انقر بزر الماوس أو اللمس للنزول إلى الميدان والتوجيه</div>
-            </div>
-        </div>
-    </header>
+    <div id="hud">
+        <h3>قائمة اللاعبين</h3>
+        <div id="playerList">جاري التحميل...</div>
+    </div>
 
-    <!-- Leaderboard -->
-    <aside class="absolute top-6 right-6 z-30 glass-hud p-4 rounded-2xl w-80 border border-amber-500/30 shadow-2xl">
-        <div class="flex items-center gap-2 mb-3 pb-2 border-b border-white/10">
-            <span class="text-xl">🏆</span>
-            <h3 class="font-bold text-sm text-amber-400">قائمة المتصدرين (Top 5)</h3>
-        </div>
-        <ul id="leaderboardList" class="space-y-2 text-xs"></ul>
-    </aside>
-
-    <canvas id="worldCanvas" class="w-full h-full block cursor-crosshair"></canvas>
+    <canvas id="gameCanvas"></canvas>
 
 <script>
-    const canvas = document.getElementById('worldCanvas');
+    const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
 
-    let screenWidth, screenHeight;
-    function resize() {
-        screenWidth = canvas.width = window.innerWidth;
-        screenHeight = canvas.height = window.innerHeight;
-    }
-    window.addEventListener('resize', resize);
-    resize();
-
-    // 🏟️ أبعاد حدود الملعب الرسمية
-    const PITCH_BOUNDS = {
-        minX: 500,
-        maxX: 6700,
-        minY: 1900,
-        maxY: 5500
-    };
-
-    // الكاميرا الديناميكية
-    let camera = { x: 3600, y: 3000, zoom: 0.38, targetZoom: 0.38 };
-    const MIN_ZOOM = 0.20;
-    const MAX_ZOOM = 1.20;
-
-    let activePlayers = {};
-    let standVault = {};
-    let dynamicStands = {};
-    let selfId = null;
-
-    const monumentImages = {};
-    const countryLandmarks = {
-        "SY": { name: "سوريا", flag: "🇸🇾", standX: 1200, color: "#00f5ff", url: "https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=400&q=80" },
-        "SA": { name: "السعودية", flag: "🇸🇦", standX: 2400, color: "#3bff17", url: "https://images.unsplash.com/photo-1586724237569-f3d0c1dee8c6?auto=format&fit=crop&w=400&q=80" },
-        "TR": { name: "تركيا", flag: "🇹🇷", standX: 3600, color: "#ff4b89", url: "https://images.unsplash.com/photo-1541432901042-2d8bd64b4a9b?auto=format&fit=crop&w=400&q=80" },
-        "EG": { name: "مصر", flag: "🇪🇬", standX: 4800, color: "#ffb1c3", url: "https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=400&q=80" },
-        "AE": { name: "الإمارات", flag: "🇦🇪", standX: 6000, color: "#ffd9e0", url: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=400&q=80" }
-    };
-
-    Object.keys(countryLandmarks).forEach(code => {
-        const img = new Image();
-        img.src = countryLandmarks[code].url;
-        monumentImages[code] = img;
-    });
-
-    // 🔗 الربط الديناميكي مع تمرير الـ userId
     const urlParams = new URLSearchParams(window.location.search);
-    const userIdQuery = urlParams.get('userId') || '';
+    const userId = urlParams.get('userId') || '';
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}${userIdQuery ? '?userId=' + userIdQuery : ''}`;
-    const socket = new WebSocket(wsUrl);
+    const socket = new WebSocket(`${protocol}//${window.location.host}${userId ? '?userId=' + userId : ''}`);
+
+    let players = [];
 
     socket.onmessage = (event) => {
         const data = JSON.parse(event.data);
-        if (data.type === 'INIT') {
-            selfId = data.selfId;
-        } else if (data.type === 'SYNC') {
-            activePlayers = data.activePlayers || {};
-            standVault = data.standVault || {};
-            dynamicStands = data.dynamicStands || {};
+        if (data.type === 'SYNC') {
+            // تجميع كل اللاعبين في مصفوفة واحدة مباشرة
+            const active = data.activePlayers ? Object.values(data.activePlayers) : [];
+            const stands = data.standVault ? Object.values(data.standVault) : [];
+            players = [...active, ...stands];
             
-            const myOrb = activePlayers[selfId] || standVault[selfId];
-            if (myOrb) {
-                camera.x += (myOrb.x - camera.x) * 0.1;
-                camera.y += (myOrb.y - camera.y) * 0.1;
-            }
-            updateLeaderboard();
+            updateHUD();
         }
     };
 
-    window.addEventListener('wheel', (e) => {
-        e.preventDefault();
-        const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
-        camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.targetZoom * zoomFactor));
-    }, { passive: false });
-
-    function getWorldCoordinates(clientX, clientY) {
-        const worldX = (clientX - screenWidth / 2) / camera.zoom + camera.x;
-        const worldY = (clientY - screenHeight / 2) / camera.zoom + camera.y;
-        return { x: worldX, y: worldY };
-    }
-
-    function clampToPitch(x, y, radius = 40) {
-        const clampedX = Math.max(PITCH_BOUNDS.minX + radius, Math.min(PITCH_BOUNDS.maxX - radius, x));
-        const clampedY = Math.max(PITCH_BOUNDS.minY + radius, Math.min(PITCH_BOUNDS.maxY - radius, y));
-        return { x: clampedX, y: clampedY };
-    }
-
-    function handleActionPointer(clientX, clientY) {
-        if (!selfId) return;
-        const myOrb = activePlayers[selfId] || standVault[selfId];
-        if (!myOrb) return;
-
-        const rawPos = getWorldCoordinates(clientX, clientY);
-        const playerRadius = myOrb.radius || 40;
-        const boundedPos = clampToPitch(rawPos.x, rawPos.y, playerRadius);
-
-        if (myOrb.inStand) {
-            socket.send(JSON.stringify({
-                type: 'ENTER_ARENA',
-                targetX: boundedPos.x,
-                targetY: boundedPos.y
-            }));
-        } else {
-            socket.send(JSON.stringify({
-                type: 'TARGET',
-                x: boundedPos.x,
-                y: boundedPos.y
-            }));
+    function updateHUD() {
+        const list = document.getElementById('playerList');
+        if (players.length === 0) {
+            list.innerHTML = 'لا يوجد لاعبون';
+            return;
         }
-    }
-
-    window.addEventListener('mousedown', (e) => handleActionPointer(e.clientX, e.clientY));
-    window.addEventListener('touchstart', (e) => {
-        if (e.touches && e.touches.length > 0) {
-            handleActionPointer(e.touches[0].clientX, e.touches[0].clientY);
-        }
-    }, { passive: true });
-
-    window.addEventListener('mousemove', (e) => {
-        if (!selfId || !activePlayers[selfId]) return;
-        const myOrb = activePlayers[selfId];
-        const rawPos = getWorldCoordinates(e.clientX, e.clientY);
-        const boundedPos = clampToPitch(rawPos.x, rawPos.y, myOrb.radius || 40);
-        socket.send(JSON.stringify({ type: 'TARGET', x: boundedPos.x, y: boundedPos.y }));
-    });
-
-    function updateLeaderboard() {
-        const listEl = document.getElementById('leaderboardList');
-        if (!listEl) return;
-        
-        const allEntities = [...Object.values(activePlayers), ...Object.values(standVault)];
-        allEntities.sort((a, b) => (b.points || 0) - (a.points || 0));
-        const top5 = allEntities.slice(0, 5);
-
-        listEl.innerHTML = top5.map((item, index) => {
-            const isMe = item.id === selfId;
-            const statusTag = item.inStand ? '<span class="text-[9px] text-gray-400 bg-gray-800 px-1.5 py-0.5 rounded">مدرج</span>' : '<span class="text-[9px] text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded">ملعب</span>';
-            const flag = (item.country && item.country.flag) ? item.country.flag : '🚩';
-            const name = item.name || 'لاعب';
-            const points = item.points ? item.points.toLocaleString() : 0;
-            const tier = item.tier || 'Bronze';
-            
-            const tierBadge = tier === 'Silver' ? '🥈 Silver' : (tier === 'Gold' ? '🥇 Gold' : '🥉 Bronze');
-
-            return `
-                <li class="flex items-center justify-between p-2 rounded-lg ${isMe ? 'bg-amber-500/20 border border-amber-500/50' : 'bg-white/5'}">
-                    <div class="flex items-center gap-2 truncate">
-                        <span class="font-bold text-amber-400 w-4">${index + 1}.</span>
-                        <span class="truncate font-bold">${flag} ${name}</span>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="text-[10px] font-bold text-amber-300 bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/30">${tierBadge}</span>
-                        ${statusTag}
-                        <span class="font-mono font-bold text-cyan-300">${points}</span>
-                    </div>
-                </li>
-            `;
-        }).join('');
-    }
-
-    function drawStadiumPitch() {
-        ctx.fillStyle = "#0c1220";
-        ctx.fillRect(-3000, -3000, 13000, 12000);
-
-        let lightGrad = ctx.createRadialGradient(3600, 3000, 500, 3600, 3000, 5500);
-        lightGrad.addColorStop(0, "rgba(0, 245, 255, 0.1)");
-        lightGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
-        ctx.fillStyle = lightGrad;
-        ctx.fillRect(-3000, -3000, 13000, 12000);
-
-        let turfGrad = ctx.createLinearGradient(0, 1900, 0, 5500);
-        turfGrad.addColorStop(0, "#0a3320");
-        turfGrad.addColorStop(0.5, "#0e442b");
-        turfGrad.addColorStop(1, "#0a3320");
-        ctx.fillStyle = turfGrad;
-        ctx.fillRect(500, 1900, 6200, 3600);
-
-        ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
-        for (let x = 500; x < 6700; x += 300) {
-            ctx.fillRect(x, 1900, 150, 3600);
-        }
-
-        ctx.strokeStyle = "#00f5ff";
-        ctx.lineWidth = 14;
-        ctx.shadowBlur = 30;
-        ctx.shadowColor = "#00f5ff";
-        ctx.strokeRect(500, 1900, 6200, 3600);
-        ctx.shadowBlur = 0;
-
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
-        ctx.lineWidth = 10;
-        ctx.beginPath(); ctx.moveTo(3600, 1900); ctx.lineTo(3600, 5500); ctx.stroke();
-        ctx.beginPath(); ctx.arc(3600, 3700, 450, 0, Math.PI * 2); ctx.stroke();
-    }
-
-    function drawStandsStructure() {
-        Object.keys(countryLandmarks).forEach(code => {
-            const c = countryLandmarks[code];
-            
-            let standGrad = ctx.createLinearGradient(c.standX - 450, 700, c.standX + 450, 1600);
-            standGrad.addColorStop(0, "#192234");
-            standGrad.addColorStop(1, "#0f1624");
-            ctx.fillStyle = standGrad;
-            
-            ctx.beginPath();
-            if (ctx.roundRect) {
-                ctx.roundRect(c.standX - 450, 750, 900, 850, 24);
-            } else {
-                ctx.rect(c.standX - 450, 750, 900, 850);
-            }
-            ctx.fill();
-
-            ctx.strokeStyle = c.color;
-            ctx.lineWidth = 4;
-            ctx.shadowBlur = 15;
-            ctx.shadowColor = c.color;
-            ctx.stroke();
-            ctx.shadowBlur = 0;
-
-            ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
-            ctx.lineWidth = 2;
-            for (let y = 850; y < 1500; y += 140) {
-                ctx.beginPath(); ctx.moveTo(c.standX - 420, y); ctx.lineTo(c.standX + 420, y); ctx.stroke();
-            }
-
-            ctx.fillStyle = "#ffffff";
-            ctx.font = "bold 34px 'Tajawal'";
-            ctx.textAlign = "center";
-            ctx.fillText(`${c.flag} مدرج VIP - ${c.name}`, c.standX, 810);
-        });
-    }
-
-    function drawOrb(p, isStand) {
-        if (!p || typeof p.x !== 'number' || typeof p.y !== 'number') return;
-        
-        ctx.save();
-        ctx.translate(p.x, p.y);
-
-        const radius = p.radius || 40;
-        const countryCode = (p.country && p.country.code) ? p.country.code : "SY";
-        const img = monumentImages[countryCode];
-        const themeColor = countryLandmarks[countryCode]?.color || "#00f5ff";
-
-        // 1. صورة المعلم الجغرافي
-        ctx.beginPath();
-        ctx.arc(0, 0, radius, 0, Math.PI * 2);
-        ctx.clip();
-
-        if (img && img.complete && img.naturalWidth !== 0) {
-            const scale = Math.max(1, radius / 30);
-            const drawWidth = radius * 2 * scale;
-            const drawHeight = radius * 2 * scale;
-            ctx.globalAlpha = isStand ? 0.8 : 0.95;
-            ctx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
-            ctx.globalAlpha = 1.0;
-        }
-
-        // 2. التظليل الزجاجي
-        let glassGrad = ctx.createRadialGradient(-radius * 0.3, -radius * 0.3, 2, 0, 0, radius);
-        glassGrad.addColorStop(0, "rgba(255, 255, 255, 0.45)");
-        glassGrad.addColorStop(1, "rgba(0, 0, 0, 0.75)");
-        ctx.fillStyle = glassGrad;
-        ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
-
-        ctx.lineWidth = Math.max(3, radius * 0.08);
-        ctx.strokeStyle = isStand ? "rgba(255, 255, 255, 0.5)" : (p.id === selfId ? "#ffd700" : themeColor);
-        ctx.shadowBlur = isStand ? 8 : (p.id === selfId ? 30 : 20);
-        ctx.shadowColor = ctx.strokeStyle;
-        ctx.stroke();
-
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = "#ffffff";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        const fontSize = Math.max(12, radius * 0.22);
-        ctx.font = `bold ${fontSize}px 'Tajawal'`;
-        
-        const flag = (p.country && p.country.flag) ? p.country.flag : '';
-        const name = p.name || 'لاعب';
-        const points = p.points ? p.points.toLocaleString() : 0;
-        const tier = p.tier || 'Bronze';
-
-        // 🏷️ طباعة الاسم
-        ctx.fillText(`${flag} ${name}`, 0, -fontSize * 0.8);
-
-        // 💎 طباعة النقاط
-        ctx.font = `bold ${fontSize * 0.75}px 'Sora'`;
-        ctx.fillStyle = isStand ? "#cbd5e0" : "#00ffff";
-        ctx.fillText(`${points} PTS`, 0, 0);
-
-        // 🏅 طباعة الرتبة (Silver / Bronze / Gold)
-        const tierColor = tier === 'Silver' ? '#c0c0c0' : (tier === 'Gold' ? '#ffd700' : '#cd7f32');
-        ctx.fillStyle = tierColor;
-        ctx.font = `bold ${fontSize * 0.65}px 'Tajawal'`;
-        ctx.fillText(`[ ${tier} ]`, 0, fontSize * 0.8);
-
-        ctx.restore();
+        list.innerHTML = players.map(p => `
+            <div class="player-item">
+                <span><b>${p.name || 'لاعب'}</b></span>
+                <span style="color: #00ffff;">${p.points || 0} PTS</span>
+            </div>
+        `).join('');
     }
 
     function render() {
-        camera.zoom += (camera.targetZoom - camera.zoom) * 0.1;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        ctx.clearRect(0, 0, screenWidth, screenHeight);
-        ctx.save();
-        ctx.translate(screenWidth / 2, screenHeight / 2);
-        ctx.scale(camera.zoom, camera.zoom);
-        ctx.translate(-camera.x, -camera.y);
+        // رسم خلفية الملعب البسيطة
+        ctx.fillStyle = '#0e442b';
+        ctx.fillRect(50, 50, canvas.width - 100, canvas.height - 100);
 
-        drawStadiumPitch();
-        drawStandsStructure();
+        // رسم كل لاعب ككرة بسيطة عليها الاسم والنقاط
+        players.forEach(p => {
+            const x = p.x || canvas.width / 2;
+            const y = p.y || canvas.height / 2;
 
-        Object.values(standVault).forEach(p => drawOrb(p, true));
-        Object.values(activePlayers).forEach(p => drawOrb(p, false));
+            // رسم الكرة
+            ctx.beginPath();
+            ctx.arc(x, y, 35, 0, Math.PI * 2);
+            ctx.fillStyle = '#00f5ff';
+            ctx.fill();
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3;
+            ctx.stroke();
 
-        ctx.restore();
+            // كتابة الاسم
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 14px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(p.name || 'لاعب', x, y - 5);
+
+            // كتابة النقاط
+            ctx.fillStyle = '#ffd700';
+            ctx.font = 'bold 12px sans-serif';
+            ctx.fillText(`${p.points || 0} PTS`, x, y + 15);
+        });
+
         requestAnimationFrame(render);
     }
 
