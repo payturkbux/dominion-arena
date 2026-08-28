@@ -47,10 +47,18 @@
     window.addEventListener('resize', resize);
     resize();
 
+    // 🏟️ أبعاد حدود الملعب الرسمية
+    const PITCH_BOUNDS = {
+        minX: 500,
+        maxX: 6700,
+        minY: 1900,
+        maxY: 5500
+    };
+
     // الكاميرا الديناميكية
     let camera = { x: 3600, y: 3000, zoom: 0.38, targetZoom: 0.38 };
-    const MIN_ZOOM = 0.20; // أقصى ابتعاد
-    const MAX_ZOOM = 1.20; // أقصى تقريب
+    const MIN_ZOOM = 0.20;
+    const MAX_ZOOM = 1.20;
 
     let activePlayers = {};
     let standVault = {};
@@ -91,7 +99,7 @@
         }
     };
 
-    // 🔍 تحكّم الكاميرا بعجلة الماوس (Smooth Zoom)
+    // 🔍 تحكّم الكاميرا بعجلة الماوس
     window.addEventListener('wheel', (e) => {
         e.preventDefault();
         const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
@@ -108,7 +116,16 @@
     }
 
     /**
-     * ⚔️ معالجة النقر والتاتش للنزول إلى الساحة أو التوجيه
+     * 🛡️ تقييد الهدف داخل حدود خطوط الملعب مع خصم نصف قطر الكرة
+     */
+    function clampToPitch(x, y, radius = 40) {
+        const clampedX = Math.max(PITCH_BOUNDS.minX + radius, Math.min(PITCH_BOUNDS.maxX - radius, x));
+        const clampedY = Math.max(PITCH_BOUNDS.minY + radius, Math.min(PITCH_BOUNDS.maxY - radius, y));
+        return { x: clampedX, y: clampedY };
+    }
+
+    /**
+     * ⚔️ معالجة النقر والتاتش للنزول أو التوجيه مع التقييد الحازم
      */
     function handleActionPointer(clientX, clientY) {
         if (!selfId) return;
@@ -116,26 +133,25 @@
         const myOrb = activePlayers[selfId] || standVault[selfId];
         if (!myOrb) return;
 
-        const pos = getWorldCoordinates(clientX, clientY);
+        const rawPos = getWorldCoordinates(clientX, clientY);
+        const playerRadius = myOrb.radius || 40;
+        const boundedPos = clampToPitch(rawPos.x, rawPos.y, playerRadius);
 
         if (myOrb.inStand) {
-            // إرسال طلب النزول فوراً إلى الساحة
             socket.send(JSON.stringify({
                 type: 'ENTER_ARENA',
-                targetX: pos.x,
-                targetY: pos.y
+                targetX: boundedPos.x,
+                targetY: boundedPos.y
             }));
         } else {
-            // توجيه الكرة داخل الملعب
             socket.send(JSON.stringify({
                 type: 'TARGET',
-                x: pos.x,
-                y: pos.y
+                x: boundedPos.x,
+                y: boundedPos.y
             }));
         }
     }
 
-    // استجابة الماوس والتاتش
     window.addEventListener('mousedown', (e) => {
         handleActionPointer(e.clientX, e.clientY);
     });
@@ -148,8 +164,10 @@
 
     window.addEventListener('mousemove', (e) => {
         if (!selfId || !activePlayers[selfId]) return;
-        const pos = getWorldCoordinates(e.clientX, e.clientY);
-        socket.send(JSON.stringify({ type: 'TARGET', x: pos.x, y: pos.y }));
+        const myOrb = activePlayers[selfId];
+        const rawPos = getWorldCoordinates(e.clientX, e.clientY);
+        const boundedPos = clampToPitch(rawPos.x, rawPos.y, myOrb.radius || 40);
+        socket.send(JSON.stringify({ type: 'TARGET', x: boundedPos.x, y: boundedPos.y }));
     });
 
     function updateLeaderboard() {
