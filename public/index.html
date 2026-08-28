@@ -13,7 +13,6 @@
 </head>
 <body class="text-white relative w-screen h-screen select-none">
 
-    <!-- HUD Header -->
     <header class="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-6 glass-hud px-8 py-3 rounded-2xl shadow-2xl border border-cyan-500/30">
         <div class="flex items-center gap-3">
             <span class="text-3xl">⚔️</span>
@@ -24,7 +23,6 @@
         </div>
     </header>
 
-    <!-- زر تسجيل الدخول (يظهر في حال كان زائر) -->
     <div class="absolute top-6 left-6 z-30">
         <button id="authBtn" onclick="openLoginModal()" class="glass-hud px-4 py-2.5 rounded-2xl flex items-center gap-2 border border-cyan-500/40 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition shadow-2xl">
             <span id="authBtnIcon">🔑</span>
@@ -32,7 +30,6 @@
         </button>
     </div>
 
-    <!-- نافذة تسجيل الدخول المنبثقة المعدلة (Email & Password Modal) -->
     <div id="loginModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
         <div class="glass-hud p-6 rounded-3xl w-full max-w-sm border border-cyan-500/40 text-center shadow-2xl space-y-4">
             <div class="text-4xl">⚽</div>
@@ -53,7 +50,6 @@
         </div>
     </div>
 
-    <!-- Leaderboard -->
     <aside class="absolute top-6 right-6 z-30 glass-hud p-4 rounded-2xl w-80 border border-amber-500/30 shadow-2xl">
         <div class="flex items-center gap-2 mb-3 pb-2 border-b border-white/10">
             <span class="text-xl">🏆</span>
@@ -87,6 +83,15 @@
     let dynamicStands = {};
     let selfId = null;
     let socket = null;
+
+    // === قائمة حسابات الناس وإرصفتهم التي تريد عرضها ككرات ثابتة ===
+    const staticUsers = [
+        { id: "u1", name: "أحمد العلي", points: 15400, country: { code: "SY", flag: "🇸🇾" }, x: 2000, y: 3000, radius: 45, tier: "Gold" },
+        { id: "u2", name: "محمد الخالد", points: 8900, country: { code: "SA", flag: "🇸🇦" }, x: 3000, y: 2500, radius: 40, tier: "Silver" },
+        { id: "u3", name: "سامر حسن", points: 3200, country: { code: "TR", flag: "🇹🇷" }, x: 4000, y: 3500, radius: 40, tier: "Bronze" },
+        { id: "u4", name: "عمر فاروق", points: 12000, country: { code: "EG", flag: "🇪🇬" }, x: 2500, y: 4000, radius: 42, tier: "Gold" },
+        { id: "u5", name: "خالد المنصوري", points: 6500, country: { code: "AE", flag: "🇦🇪" }, x: 5000, y: 3000, radius: 40, tier: "Silver" }
+    ];
 
     const monumentImages = {};
     const countryLandmarks = {
@@ -157,7 +162,6 @@
         document.getElementById('loginError').classList.add('hidden');
     }
 
-    // الدالة المعدلة لمعالجة تسجيل الدخول للإيميل وكلمة السر
     async function submitLogin() {
         const email = document.getElementById('userEmailInput').value.trim();
         const password = document.getElementById('userPasswordInput').value.trim();
@@ -169,17 +173,6 @@
             return;
         }
 
-        /* 
-           تنويه: إذا كنت تستخدم مكتبة Supabase JS في مشروعك، 
-           يمكنك استبدال الكود أدناه بـ:
-           
-           const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-           if (error) { errorEl.innerText = error.message; errorEl.classList.remove('hidden'); return; }
-           const userId = data.user.id;
-        */
-
-        // هنا نفترض استخدام ID الحساب الناتج عن عملية الدخول
-        // تجريبياً سنأخذ الإيميل أو يُفترض أن السيرفر يرجّع لك الـ User ID
         currentUserId = email; 
         localStorage.setItem('dominion_user_id', currentUserId);
         
@@ -257,7 +250,8 @@
         const listEl = document.getElementById('leaderboardList');
         if (!listEl) return;
         
-        const allEntities = [...Object.values(activePlayers), ...Object.values(standVault)];
+        // دمج لاعبي السيرفر مع حسابات الناس المخزنة
+        const allEntities = [...Object.values(activePlayers), ...Object.values(standVault), ...staticUsers];
         allEntities.sort((a, b) => (b.points || 0) - (a.points || 0));
         const top5 = allEntities.slice(0, 5);
 
@@ -433,6 +427,10 @@
         drawStadiumPitch();
         drawStandsStructure();
 
+        // 1. رسم حسابات الناس الثابتين
+        staticUsers.forEach(p => drawOrb(p, false));
+
+        // 2. رسم كرات السيرفر الأونلاين
         Object.values(standVault).forEach(p => drawOrb(p, true));
         Object.values(activePlayers).forEach(p => drawOrb(p, false));
 
