@@ -40,6 +40,15 @@
         <div id="leaderboardList" class="space-y-2 text-xs"></div>
     </aside>
 
+    <!-- Bottom National Dominance Bar -->
+    <footer class="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 w-11/12 max-w-4xl glass-hud p-4 rounded-2xl border border-white/10 flex flex-col gap-2">
+        <div class="flex justify-between text-xs font-bold text-cyan-400">
+            <span>ميزان الهيمنة الوطنية الجغرافي</span>
+            <span id="dominanceRatioText">جاري الحساب...</span>
+        </div>
+        <div id="dominanceProgressBar" class="h-3 w-full bg-white/5 rounded-full overflow-hidden flex"></div>
+    </footer>
+
     <!-- Canvas Arena -->
     <canvas id="worldCanvas" class="w-full h-full block cursor-grab active:cursor-grabbing"></canvas>
 
@@ -117,6 +126,42 @@
             `;
             listContainer.appendChild(row);
         });
+
+        updateDominanceBar(playerArray);
+    }
+
+    function updateDominanceBar(playerArray) {
+        const countryTotals = {};
+        let totalScoreAll = 0;
+
+        playerArray.forEach(p => {
+            const code = p.country?.code || "SY";
+            countryTotals[code] = (countryTotals[code] || 0) + p.points;
+            totalScoreAll += p.points;
+        });
+
+        const barContainer = document.getElementById('dominanceProgressBar');
+        barContainer.innerHTML = '';
+
+        if (totalScoreAll === 0) return;
+
+        Object.keys(countryTotals).forEach(code => {
+            const percentage = ((countryTotals[code] / totalScoreAll) * 100).toFixed(1);
+            const color = countryLandmarks[code]?.color || "#00f5ff";
+
+            const segment = document.createElement('div');
+            segment.style.width = `${percentage}%`;
+            segment.style.backgroundColor = color;
+            segment.title = `${code}: ${percentage}%`;
+            segment.className = "h-full transition-all duration-500";
+            barContainer.appendChild(segment);
+        });
+
+        const topCode = Object.keys(countryTotals).sort((a,b) => countryTotals[b] - countryTotals[a])[0];
+        if (topCode) {
+            document.getElementById('dominanceRatioText').innerText = 
+                `تتصدر القائمة ${countryLandmarks[topCode]?.name || topCode} بنسبة ${((countryTotals[topCode]/totalScoreAll)*100).toFixed(1)}%`;
+        }
     }
 
     function render() {
@@ -149,7 +194,7 @@
             ctx.save();
             ctx.translate(p.x, p.y);
 
-            const countryCode = p.country.code || "SY";
+            const countryCode = p.country?.code || "SY";
             const img = monumentImages[countryCode];
             const themeColor = countryLandmarks[countryCode]?.color || "#00f5ff";
 
@@ -160,7 +205,6 @@
 
             // رسم صورة المعلم الحضاري وتكبير تفاصيله بحسب حجم الكرة
             if (img && img.complete) {
-                // حساب مقياس التكبير بناءً على نقاط وحجم الكرة
                 const scale = Math.max(1, p.radius / 30);
                 const drawWidth = p.radius * 2 * scale;
                 const drawHeight = p.radius * 2 * scale;
@@ -169,7 +213,6 @@
                 ctx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
                 ctx.globalAlpha = 1.0;
             } else {
-                // خلفية افتراضية في حال عدم اكتمال تحميل الصورة
                 ctx.fillStyle = themeColor;
                 ctx.fill();
             }
