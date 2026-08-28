@@ -25,7 +25,7 @@
     </header>
 
     <!-- Leaderboard -->
-    <aside class="absolute top-6 right-6 z-30 glass-hud p-4 rounded-2xl w-72 border border-amber-500/30 shadow-2xl">
+    <aside class="absolute top-6 right-6 z-30 glass-hud p-4 rounded-2xl w-80 border border-amber-500/30 shadow-2xl">
         <div class="flex items-center gap-2 mb-3 pb-2 border-b border-white/10">
             <span class="text-xl">🏆</span>
             <h3 class="font-bold text-sm text-amber-400">قائمة المتصدرين (Top 5)</h3>
@@ -62,6 +62,7 @@
 
     let activePlayers = {};
     let standVault = {};
+    let dynamicStands = {};
     let selfId = null;
 
     const monumentImages = {};
@@ -79,8 +80,12 @@
         monumentImages[code] = img;
     });
 
+    // 🔗 الربط الديناميكي مع تمرير الـ userId
+    const urlParams = new URLSearchParams(window.location.search);
+    const userIdQuery = urlParams.get('userId') || '';
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const socket = new WebSocket(`${protocol}//${window.location.host}`);
+    const wsUrl = `${protocol}//${window.location.host}${userIdQuery ? '?userId=' + userIdQuery : ''}`;
+    const socket = new WebSocket(wsUrl);
 
     socket.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -89,6 +94,7 @@
         } else if (data.type === 'SYNC') {
             activePlayers = data.activePlayers || {};
             standVault = data.standVault || {};
+            dynamicStands = data.dynamicStands || {};
             
             const myOrb = activePlayers[selfId] || standVault[selfId];
             if (myOrb) {
@@ -99,37 +105,26 @@
         }
     };
 
-    // 🔍 تحكّم الكاميرا بعجلة الماوس
     window.addEventListener('wheel', (e) => {
         e.preventDefault();
         const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
         camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.targetZoom * zoomFactor));
     }, { passive: false });
 
-    /**
-     * 🎯 تحويل إحداثيات الشاشة إلى إحداثيات العالم
-     */
     function getWorldCoordinates(clientX, clientY) {
         const worldX = (clientX - screenWidth / 2) / camera.zoom + camera.x;
         const worldY = (clientY - screenHeight / 2) / camera.zoom + camera.y;
         return { x: worldX, y: worldY };
     }
 
-    /**
-     * 🛡️ تقييد الهدف داخل حدود خطوط الملعب مع خصم نصف قطر الكرة
-     */
     function clampToPitch(x, y, radius = 40) {
         const clampedX = Math.max(PITCH_BOUNDS.minX + radius, Math.min(PITCH_BOUNDS.maxX - radius, x));
         const clampedY = Math.max(PITCH_BOUNDS.minY + radius, Math.min(PITCH_BOUNDS.maxY - radius, y));
         return { x: clampedX, y: clampedY };
     }
 
-    /**
-     * ⚔️ معالجة النقر والتاتش للنزول أو التوجيه مع التقييد الحازم
-     */
     function handleActionPointer(clientX, clientY) {
         if (!selfId) return;
-
         const myOrb = activePlayers[selfId] || standVault[selfId];
         if (!myOrb) return;
 
@@ -152,10 +147,7 @@
         }
     }
 
-    window.addEventListener('mousedown', (e) => {
-        handleActionPointer(e.clientX, e.clientY);
-    });
-
+    window.addEventListener('mousedown', (e) => handleActionPointer(e.clientX, e.clientY));
     window.addEventListener('touchstart', (e) => {
         if (e.touches && e.touches.length > 0) {
             handleActionPointer(e.touches[0].clientX, e.touches[0].clientY);
@@ -184,14 +176,18 @@
             const flag = (item.country && item.country.flag) ? item.country.flag : '🚩';
             const name = item.name || 'لاعب';
             const points = item.points ? item.points.toLocaleString() : 0;
+            const tier = item.tier || 'Bronze';
+            
+            const tierBadge = tier === 'Silver' ? '🥈 Silver' : (tier === 'Gold' ? '🥇 Gold' : '🥉 Bronze');
 
             return `
                 <li class="flex items-center justify-between p-2 rounded-lg ${isMe ? 'bg-amber-500/20 border border-amber-500/50' : 'bg-white/5'}">
                     <div class="flex items-center gap-2 truncate">
                         <span class="font-bold text-amber-400 w-4">${index + 1}.</span>
-                        <span class="truncate">${flag} ${name}</span>
+                        <span class="truncate font-bold">${flag} ${name}</span>
                     </div>
                     <div class="flex items-center gap-2">
+                        <span class="text-[10px] font-bold text-amber-300 bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-500/30">${tierBadge}</span>
                         ${statusTag}
                         <span class="font-mono font-bold text-cyan-300">${points}</span>
                     </div>
@@ -245,7 +241,6 @@
             ctx.fillStyle = standGrad;
             
             ctx.beginPath();
-            // إصلاح توافق roundRect للعمل على جميع المتصفحات
             if (ctx.roundRect) {
                 ctx.roundRect(c.standX - 450, 750, 900, 850, 24);
             } else {
@@ -284,6 +279,7 @@
         const img = monumentImages[countryCode];
         const themeColor = countryLandmarks[countryCode]?.color || "#00f5ff";
 
+        // 1. صورة المعلم الجغرافي
         ctx.beginPath();
         ctx.arc(0, 0, radius, 0, Math.PI * 2);
         ctx.clip();
@@ -297,6 +293,7 @@
             ctx.globalAlpha = 1.0;
         }
 
+        // 2. التظليل الزجاجي
         let glassGrad = ctx.createRadialGradient(-radius * 0.3, -radius * 0.3, 2, 0, 0, radius);
         glassGrad.addColorStop(0, "rgba(255, 255, 255, 0.45)");
         glassGrad.addColorStop(1, "rgba(0, 0, 0, 0.75)");
@@ -313,18 +310,27 @@
         ctx.fillStyle = "#ffffff";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        const fontSize = Math.max(12, radius * 0.23);
+        const fontSize = Math.max(12, radius * 0.22);
         ctx.font = `bold ${fontSize}px 'Tajawal'`;
         
         const flag = (p.country && p.country.flag) ? p.country.flag : '';
         const name = p.name || 'لاعب';
         const points = p.points ? p.points.toLocaleString() : 0;
+        const tier = p.tier || 'Bronze';
 
-        ctx.fillText(`${flag} ${name}`, 0, -fontSize * 0.4);
+        // 🏷️ طباعة الاسم
+        ctx.fillText(`${flag} ${name}`, 0, -fontSize * 0.8);
 
+        // 💎 طباعة النقاط
         ctx.font = `bold ${fontSize * 0.75}px 'Sora'`;
         ctx.fillStyle = isStand ? "#cbd5e0" : "#00ffff";
-        ctx.fillText(`${points} PTS`, 0, fontSize * 0.65);
+        ctx.fillText(`${points} PTS`, 0, 0);
+
+        // 🏅 طباعة الرتبة (Silver / Bronze / Gold)
+        const tierColor = tier === 'Silver' ? '#c0c0c0' : (tier === 'Gold' ? '#ffd700' : '#cd7f32');
+        ctx.fillStyle = tierColor;
+        ctx.font = `bold ${fontSize * 0.65}px 'Tajawal'`;
+        ctx.fillText(`[ ${tier} ]`, 0, fontSize * 0.8);
 
         ctx.restore();
     }
