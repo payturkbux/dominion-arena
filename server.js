@@ -9,131 +9,274 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-let activePlayers = {};
-let standVault = {};
+// هيكلية تخزين البيانات الحية
+let activePlayers = {}; // الكرات الموجودة حالياً داخل الميدان (العشب)
+let standVault = {};    // جميع مستخدمي المنصة المتواجدين في المدرجات
+let dynamicStands = {}; // مدرجات الدول المنشأة ديناميكياً
 
-const PITCH = { minX: 550, maxX: 6650, minY: 1950, maxY: 5450 };
+// حدود المستطيل الخاص بميدان الملعب (العشب)
+const PITCH = { minX: 800, maxX: 7200, minY: 2200, maxY: 5800 };
 
-// نقل المدرجات لتكون قريبة جداً فوق أرضية العشب مباشرة (y: 1100)
-const countriesList = [
-    { code: "SY", name: "سوريا", flag: "🇸🇾", standX: 1200, standY: 1100 },
-    { code: "SA", name: "السعودية", flag: "🇸🇦", standX: 2400, standY: 1100 },
-    { code: "TR", name: "تركيا", flag: "🇹🇷", standX: 3600, standY: 1100 },
-    { code: "EG", name: "مصر", flag: "🇪🇬", standX: 4800, standY: 1100 },
-    { code: "AE", name: "الإمارات", flag: "🇦🇪", standX: 6000, standY: 1100 }
-];
+// إحداثيات البداية للمدرجات (السطر العلوي فوق الملعب)
+let nextStandX = 1200;
 
-countriesList.forEach((c) => {
-    for (let i = 1; i <= 6; i++) {
-        const id = `stand_${c.code}_${i}`;
-        const pts = Math.floor(Math.random() * 35000) + 12000;
-        const row = Math.floor((i - 1) / 3);
-        const col = (i - 1) % 3;
+/**
+ * دالة حساب نصف قطر (حجم) الكرة بناءً على نقاط المستخدم في محفظة Taralali
+ * الحجم يعكس الرصيد مباشرة: الحد الأدنى 32px وتكبر المساحة جذرياً مع زيادة النقاط
+ */
+function calculateRadius(points) {
+    const pts = Math.max(0, points || 0);
+    return Math.max(32, Math.sqrt(pts) * 0.45);
+}
 
-        standVault[id] = {
-            id: id,
-            name: `عضو_${c.name}_${i}`,
-            country: c,
-            points: pts,
-            inStand: true,
-            x: c.standX + (col - 1) * 200,
-            y: c.standY + row * 160,
-            radius: Math.max(38, Math.sqrt(pts) * 0.42)
+/**
+ * دالة جلب أو إنشاء مدرج دولة جديدة ديناميكياً
+ */
+function getOrCreateCountryStand(countryCode, countryName, flag) {
+    const code = (countryCode || 'GLOBAL').toUpperCase();
+    if (!dynamicStands[code]) {
+        dynamicStands[code] = {
+            code: code,
+            name: countryName || code,
+            flag: flag || '🌐',
+            x: nextStandX,
+            y: 1100,
+            color: `#${Math.floor(Math.random() * 16777215).toString(16).padStart(6, '0')}` // لون نيون مميز للمدرج
         };
+        nextStandX += 1400; // مسافة بين مدرج كل دولة والأخرى
     }
-});
+    return dynamicStands[code];
+}
 
-wss.on('connection', (ws) => {
-    const playerId = 'user_' + Math.random().toString(36).substr(2, 6);
-    const userCountry = countriesList[0];
-    const startPts = 30000;
+/**
+ * دالة إعادة حساب وتوزيع مواقع مقاعد الكرات داخل مدرج الدولة
+ * تتسع الصفوف والأعمدة تلقائياً بناءً على عدد وحجم كرات الأعضاء في المدرج
+ */
+function recalculateStandPositions(countryCode) {
+    const code = (countryCode || 'GLOBAL').toUpperCase();
+    const members = Object.values(standVault).filter(p => p.country.code === code);
+    const stand = dynamicStands[code];
+    if (!stand) return;
 
-    activePlayers[playerId] = {
-        id: playerId,
-        name: "أنت (اللاعب)",
-        country: userCountry,
-        points: startPts,
-        inStand: false,
-        x: 3600,
-        y: 3700,
-        vx: 0, vy: 0,
-        radius: Math.max(38, Math.sqrt(startPts) * 0.42)
-    };
+    // ترتيب الأعضاء حسب الرصيد (الأكبر نقاطاً يظهر في الصفوف الأولى)
+    members.sort((a, b) => b.points - a.points);
 
-    ws.send(JSON.stringify({ type: 'INIT', selfId: playerId }));
+    const cols = Math.max(3, Math.ceil(Math.sqrt(members.length)));
+    members.forEach((p, idx) => {
+        const row = Math.floor(idx / cols);
+        const col = idx % cols;
+        // حساب المسافات بناءً على إحداثيات مركز المدرج
+        p.x = stand.x + (col - (cols - 1) / 2) * 190;
+        p.y = stand.y + row * 160;
+    });
+}
 
+/**
+ * دالة شحن أو تحديث مستخدم من منصة Taralali إلى المدرج
+ * (تستدعى عند الدخول أو عند جلب قاعدة البيانات)
+ */
+function syncTaralaliUserToStand(userData) {
+    const { userId, name, countryCode, countryName, flag, points } = userData;
+    const countryObj = getOrCreateCountryStand(countryCode, countryName, flag);
+
+    // إذا لم يكن العضو يلعب حالياً في الميدان، نقوم بتحديث/إضافة كرته في المدرج
+    if (!activePlayers[userId]) {
+        const currentPoints = points !== undefined ? points : 10000;
+        standVault[userId] = {
+            id: userId,
+            name: name || `عضو_${userId.toString().substr(0, 4)}`,
+            country: countryObj,
+            points: currentPoints,
+            inStand: true,
+            x: countryObj.x,
+            y: countryObj.y,
+            vx: 0,
+            vy: 0,
+            radius: calculateRadius(currentPoints)
+        };
+        recalculateStandPositions(countryObj.code);
+    }
+}
+
+// ==========================================
+// إدارة اتصالات الـ WebSocket
+// ==========================================
+wss.on('connection', (ws, req) => {
+    const urlParams = new URLSearchParams(req.url.replace('/?', ''));
+    
+    // استخراج بيانات مستخدم Taralali من رابط الاتصال
+    const userId = urlParams.get('userId') || 'user_' + Math.random().toString(36).substr(2, 6);
+    const countryCode = (urlParams.get('country') || 'SY').toUpperCase();
+    const countryName = urlParams.get('countryName') || countryCode;
+    const flag = urlParams.get('flag') || '🇸🇾';
+    const username = urlParams.get('name') || `لاعب_${userId.substr(0, 4)}`;
+    const userPoints = parseInt(urlParams.get('points'), 10) || 25000;
+
+    // توطين المستخدم في المدرج الخاص بدولته فور اتصاله
+    syncTaralaliUserToStand({
+        userId: userId,
+        name: username,
+        countryCode: countryCode,
+        countryName: countryName,
+        flag: flag,
+        points: userPoints
+    });
+
+    // إرسال معرف الجلسة الخاص بالعميل
+    ws.send(JSON.stringify({ type: 'INIT', selfId: userId }));
+
+    // استقبال الأوامر من العميل
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
-            if (data.type === 'TARGET' && activePlayers[playerId]) {
-                const p = activePlayers[playerId];
-                const dx = data.x - p.x;
-                const dy = data.y - p.y;
+
+            // ⚔️ 1. أمر النزول من المدرج إلى الميدان للمنافسة
+            if (data.type === 'ENTER_ARENA' && standVault[userId]) {
+                const player = standVault[userId];
+                player.inStand = false;
+                
+                // إنزال الكرة في مكان عشوائي داخل حدود العشب
+                player.x = PITCH.minX + 200 + Math.random() * (PITCH.maxX - PITCH.minX - 400);
+                player.y = PITCH.minY + 200 + Math.random() * (PITCH.maxY - PITCH.minY - 400);
+                player.vx = 0;
+                player.vy = 0;
+
+                // نقل الكرة من المدرج إلى قائمة اللاعبين النشطين في الميدان
+                activePlayers[userId] = player;
+                delete standVault[userId];
+                
+                recalculateStandPositions(player.country.code);
+            }
+
+            // 🎯 2. أمر توجيه الكرة داخل الميدان عبر الماوس / اللمس
+            if (data.type === 'TARGET' && activePlayers[userId]) {
+                const player = activePlayers[userId];
+                const dx = data.x - player.x;
+                const dy = data.y - player.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
-                if (dist > 10) {
-                    p.vx = (dx / dist) * 7;
-                    p.vy = (dy / dist) * 7;
+
+                if (dist > 15) {
+                    // السرعة تتناسب عكسياً مع حجم الكرة (الكرات الضخمة أثقل قليلاً)
+                    const speed = Math.max(3, 9 - (player.radius * 0.03));
+                    player.vx = (dx / dist) * speed;
+                    player.vy = (dy / dist) * speed;
                 } else {
-                    p.vx = 0; p.vy = 0;
+                    player.vx = 0;
+                    player.vy = 0;
                 }
             }
-        } catch (e) {}
+
+            // 🔄 3. تحديث نقاط المحفظة من المنصة الخارجية (API Sync)
+            if (data.type === 'UPDATE_WALLET_POINTS') {
+                const targetId = data.targetUserId || userId;
+                const newPoints = data.newPoints;
+                
+                const targetOrb = activePlayers[targetId] || standVault[targetId];
+                if (targetOrb) {
+                    targetOrb.points = newPoints;
+                    targetOrb.radius = calculateRadius(newPoints);
+                    if (targetOrb.inStand) {
+                        recalculateStandPositions(targetOrb.country.code);
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('Error processing message:', err);
+        }
     });
 
+    // عند قطع الاتصال
     ws.on('close', () => {
-        if (activePlayers[playerId]) {
-            const p = activePlayers[playerId];
-            p.inStand = true;
-            p.vx = 0; p.vy = 0;
-            p.x = p.country.standX;
-            p.y = p.country.standY;
-            standVault[playerId] = p;
-            delete activePlayers[playerId];
+        // ملاحظة: تظل الكرة مسجلة في المدرج إذا أردنا إبقاء عرض جميع أعضاء المنصة،
+        // ولكن هنا نحذف الجلسة الحية لتنظيف الذكرة عند المغادرة التامة.
+        if (activePlayers[userId]) {
+            const countryCode = activePlayers[userId].country.code;
+            delete activePlayers[userId];
+            recalculateStandPositions(countryCode);
         }
     });
 });
 
+// ==========================================
+// حلقة الفيزياء والحسابات اللحظية (40ms = 25 FPS)
+// ==========================================
 setInterval(() => {
     const activeList = Object.values(activePlayers);
 
+    // 1. تحديث إحداثيات الكرات على العشب وتطبيق حواجز الملعب
     activeList.forEach(p => {
         p.x += p.vx;
         p.y += p.vy;
 
+        // الاحتكاك البسيط لإبطاء الحركة تدريجياً
+        p.vx *= 0.98;
+        p.vy *= 0.98;
+
+        // حماية الخروج خارج خطوط الملعب
         if (p.x - p.radius < PITCH.minX) { p.x = PITCH.minX + p.radius; p.vx = 0; }
         if (p.x + p.radius > PITCH.maxX) { p.x = PITCH.maxX - p.radius; p.vx = 0; }
         if (p.y - p.radius < PITCH.minY) { p.y = PITCH.minY + p.radius; p.vy = 0; }
         if (p.y + p.radius > PITCH.maxY) { p.y = PITCH.maxY - p.radius; p.vy = 0; }
     });
 
+    // 2. منطق التصادم والابتلاع والخصم والعودة للمدرج
     for (let i = 0; i < activeList.length; i++) {
         for (let j = i + 1; j < activeList.length; j++) {
             const a = activeList[i];
             const b = activeList[j];
-            const dist = Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 
-            if (dist < Math.abs(a.radius - b.radius) + 10) {
+            const dx = a.x - b.x;
+            const dy = a.y - b.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            // تحقق من التداخل بين الكرتين
+            if (dist < Math.abs(a.radius - b.radius) + 5) {
                 const bigger = a.radius > b.radius ? a : b;
                 const smaller = a.radius > b.radius ? b : a;
 
-                if (bigger.radius > smaller.radius * 1.1) {
-                    smaller.points = Math.max(1, smaller.points - 1);
+                // يشترط أن تكون الكرة الأكبر حجمها أكبر بـ 8% على الأقل لابتلاع الأصغر
+                if (bigger.radius > smaller.radius * 1.08) {
+                    
+                    // خصم نقطة من المهزوم وإضافتها للفائز
+                    smaller.points = Math.max(0, smaller.points - 1);
                     bigger.points += 1;
-                    smaller.radius = Math.max(38, Math.sqrt(smaller.points) * 0.42);
-                    bigger.radius = Math.max(38, Math.sqrt(bigger.points) * 0.42);
-                    smaller.x = 3600;
-                    smaller.y = 3700;
+
+                    // تحديث حجم الكرتين مباشرة بناءً على النقاط الجديدة
+                    smaller.radius = calculateRadius(smaller.points);
+                    bigger.radius = calculateRadius(bigger.points);
+
+                    // طرد المهزوم من الميدان وإعادته فوراً لـ (مدرج بلده)
+                    smaller.inStand = true;
+                    smaller.vx = 0;
+                    smaller.vy = 0;
+
+                    standVault[smaller.id] = smaller;
+                    delete activePlayers[smaller.id];
+
+                    // إعادة تنظيم مقاعد المدرج للدولة بعد عودة المهزوم
+                    recalculateStandPositions(smaller.country.code);
                 }
             }
         }
     }
 
+    // 3. بث التحديث اللحظي الموحد لجميع المتصفحات الموصلة
+    const payload = JSON.stringify({
+        type: 'SYNC',
+        activePlayers: activePlayers,
+        standVault: standVault,
+        dynamicStands: dynamicStands
+    });
+
     wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({ type: 'SYNC', activePlayers, standVault }));
+            client.send(payload);
         }
     });
 }, 40);
 
+// تشغيل الخادم
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log(`Stadium Server active on port ${PORT}`));
+server.listen(PORT, () => {
+    console.log(`[Taralali Server] Arena server live on port ${PORT}`);
+});
