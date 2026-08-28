@@ -3,22 +3,23 @@
 <head>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>Dominion Sanctuary & Arena</title>
+    <title>Dominion Grand Stadium</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Tajawal:wght@500;700;900&display=swap" rel="stylesheet"/>
     <style>
-        body { font-family: 'Tajawal', sans-serif; background-color: #050608; margin: 0; overflow: hidden; }
-        .glass-hud { background: rgba(15, 17, 23, 0.85); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        body { font-family: 'Tajawal', sans-serif; background-color: #040608; margin: 0; overflow: hidden; }
+        .glass-hud { background: rgba(10, 14, 23, 0.85); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.12); }
     </style>
 </head>
 <body class="text-white relative w-screen h-screen select-none">
 
+    <!-- Top HUD Header -->
     <header class="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-6 glass-hud px-8 py-3 rounded-2xl shadow-2xl border border-cyan-500/30">
         <div class="flex items-center gap-3">
-            <span class="text-3xl animate-bounce">🏰</span>
+            <span class="text-3xl">🏟️</span>
             <div>
-                <div class="text-[10px] uppercase text-cyan-400 font-bold tracking-widest">المسرح الملكي وحلبة الصراع</div>
-                <div class="text-sm font-black text-emerald-400">الكرات العلوية محشورة بأمان تهمة 100%</div>
+                <div class="text-[10px] uppercase text-cyan-400 font-bold tracking-widest">استاد الهيمنة الملكي (Dominion Stadium)</div>
+                <div class="text-xs font-bold text-emerald-400">الكرات على المدرجات المحمية 100% | حرك الماوس للعب على العشب</div>
             </div>
         </div>
     </header>
@@ -28,7 +29,7 @@
 <script>
     const canvas = document.getElementById('worldCanvas');
     const ctx = canvas.getContext('2d');
-    const WORLD_SIZE = { width: 7000, height: 6000 };
+    const WORLD_SIZE = { width: 7200, height: 6000 };
 
     let screenWidth, screenHeight;
     function resize() {
@@ -38,18 +39,18 @@
     window.addEventListener('resize', resize);
     resize();
 
-    let camera = { x: 3500, y: 2500, zoom: 0.6 };
+    let camera = { x: 3600, y: 3000, zoom: 0.55 };
     let activePlayers = {};
-    let safeVault = {};
+    let standVault = {};
     let selfId = null;
 
     const monumentImages = {};
     const countryLandmarks = {
-        "SY": { name: "سوريا", vaultX: 1000, color: "#00f5ff", url: "https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=400&q=80" },
-        "SA": { name: "السعودية", vaultX: 2200, color: "#3bff17", url: "https://images.unsplash.com/photo-1586724237569-f3d0c1dee8c6?auto=format&fit=crop&w=400&q=80" },
-        "TR": { name: "تركيا", vaultX: 3400, color: "#ff4b89", url: "https://images.unsplash.com/photo-1541432901042-2d8bd64b4a9b?auto=format&fit=crop&w=400&q=80" },
-        "EG": { name: "مصر", vaultX: 4600, color: "#ffb1c3", url: "https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=400&q=80" },
-        "AE": { name: "الإمارات", vaultX: 5800, color: "#ffd9e0", url: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=400&q=80" }
+        "SY": { name: "سوريا", flag: "🇸🇾", standX: 1200, color: "#00f5ff", url: "https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=400&q=80" },
+        "SA": { name: "السعودية", flag: "🇸🇦", standX: 2400, color: "#3bff17", url: "https://images.unsplash.com/photo-1586724237569-f3d0c1dee8c6?auto=format&fit=crop&w=400&q=80" },
+        "TR": { name: "تركيا", flag: "🇹🇷", standX: 3600, color: "#ff4b89", url: "https://images.unsplash.com/photo-1541432901042-2d8bd64b4a9b?auto=format&fit=crop&w=400&q=80" },
+        "EG": { name: "مصر", flag: "🇪🇬", standX: 4800, color: "#ffb1c3", url: "https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=400&q=80" },
+        "AE": { name: "الإمارات", flag: "🇦🇪", standX: 6000, color: "#ffd9e0", url: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=400&q=80" }
     };
 
     Object.keys(countryLandmarks).forEach(code => {
@@ -68,7 +69,7 @@
             selfId = data.selfId;
         } else if (data.type === 'SYNC') {
             activePlayers = data.activePlayers;
-            safeVault = data.safeVault;
+            standVault = data.standVault;
             if (selfId && activePlayers[selfId]) {
                 const me = activePlayers[selfId];
                 camera.x += (me.x - camera.x) * 0.1;
@@ -84,13 +85,98 @@
         socket.send(JSON.stringify({ type: 'TARGET', x: worldX, y: worldY }));
     });
 
-    function drawOrb(p, isSafe) {
+    // رسم الاستاد والخطوط الرياضية
+    function drawStadiumPitch() {
+        // 1. أرضية العشب الأخضر للملعب (Turf)
+        let turfGrad = ctx.createLinearGradient(0, 1800, 0, 5600);
+        turfGrad.addColorStop(0, "#0a2e1d");
+        turfGrad.addColorStop(0.5, "#0e3d27");
+        turfGrad.addColorStop(1, "#0a2e1d");
+        ctx.fillStyle = turfGrad;
+        ctx.fillRect(450, 1850, 6300, 3700);
+
+        // خطوط تقليم العشب (Striated Pitch Effect)
+        ctx.fillStyle = "rgba(255, 255, 255, 0.02)";
+        for (let x = 450; x < 6750; x += 400) {
+            ctx.fillRect(x, 1850, 200, 3700);
+        }
+
+        // 2. خطوط الملعب البيضاء الاحترافية
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+        ctx.lineWidth = 12;
+
+        // المستطيل الخارجي
+        ctx.strokeRect(500, 1900, 6200, 3600);
+
+        // خط منتصف الملعب
+        ctx.beginPath();
+        ctx.moveTo(3600, 1900);
+        ctx.lineTo(3600, 5500);
+        ctx.stroke();
+
+        // دائرة السنتر
+        ctx.beginPath();
+        ctx.arc(3600, 3700, 450, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+        ctx.beginPath();
+        ctx.arc(3600, 3700, 20, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    function drawStandsStructure() {
+        Object.keys(countryLandmarks).forEach(code => {
+            const c = countryLandmarks[code];
+            
+            // خلفية المدرج الفخم
+            let standGrad = ctx.createLinearGradient(c.standX - 450, 200, c.standX + 450, 1000);
+            standGrad.addColorStop(0, "#121824");
+            standGrad.addColorStop(1, "#0b0e17");
+            ctx.fillStyle = standGrad;
+            
+            ctx.beginPath();
+            ctx.roundRect(c.standX - 450, 180, 900, 900, 30);
+            ctx.fill();
+
+            // إطار النيون لكل مدرج دولة
+            ctx.strokeStyle = c.color;
+            ctx.lineWidth = 4;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = c.color;
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // درجة المقاعد (Tier Lines)
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+            ctx.lineWidth = 2;
+            for (let y = 300; y < 1000; y += 150) {
+                ctx.beginPath(); ctx.moveTo(c.standX - 420, y); ctx.lineTo(c.standX + 420, y); ctx.stroke();
+            }
+
+            // لافتة اسم المدرج والعلم
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 32px 'Tajawal'";
+            ctx.textAlign = "center";
+            ctx.fillText(`${c.flag} مدرج VIP - ${c.name}`, c.standX, 260);
+        });
+    }
+
+    function drawOrb(p, isStand) {
         ctx.save();
         ctx.translate(p.x, p.y);
 
         const countryCode = p.country?.code || "SY";
         const img = monumentImages[countryCode];
         const themeColor = countryLandmarks[countryCode]?.color || "#00f5ff";
+
+        // إذا كانت الكرة على المدرج، نرسم قاعدة مقعد تحتها
+        if (isStand) {
+            ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+            ctx.beginPath();
+            ctx.ellipse(0, p.radius * 0.7, p.radius * 0.9, p.radius * 0.3, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
 
         ctx.beginPath();
         ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
@@ -100,20 +186,22 @@
             const scale = Math.max(1, p.radius / 30);
             const drawWidth = p.radius * 2 * scale;
             const drawHeight = p.radius * 2 * scale;
-            ctx.globalAlpha = isSafe ? 0.5 : 0.85;
+            ctx.globalAlpha = isStand ? 0.7 : 0.9;
             ctx.drawImage(img, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
             ctx.globalAlpha = 1.0;
         }
 
+        // تأثير بلوري كريستالي
         let glassGrad = ctx.createRadialGradient(-p.radius * 0.3, -p.radius * 0.3, 2, 0, 0, p.radius);
         glassGrad.addColorStop(0, "rgba(255, 255, 255, 0.45)");
-        glassGrad.addColorStop(1, "rgba(0, 0, 0, 0.7)");
+        glassGrad.addColorStop(1, "rgba(0, 0, 0, 0.75)");
         ctx.fillStyle = glassGrad;
         ctx.beginPath(); ctx.arc(0, 0, p.radius, 0, Math.PI * 2); ctx.fill();
 
+        // إطار الكرة مضيء
         ctx.lineWidth = Math.max(3, p.radius * 0.08);
-        ctx.strokeStyle = isSafe ? "#a0aec0" : (p.id === selfId ? "#ffd700" : themeColor);
-        ctx.shadowBlur = isSafe ? 5 : 20;
+        ctx.strokeStyle = isStand ? "rgba(255, 255, 255, 0.4)" : (p.id === selfId ? "#ffd700" : themeColor);
+        ctx.shadowBlur = isStand ? 5 : (p.id === selfId ? 30 : 20);
         ctx.shadowColor = ctx.strokeStyle;
         ctx.stroke();
 
@@ -121,12 +209,12 @@
         ctx.fillStyle = "#ffffff";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        const fontSize = Math.max(12, p.radius * 0.24);
+        const fontSize = Math.max(12, p.radius * 0.23);
         ctx.font = `bold ${fontSize}px 'Tajawal'`;
         ctx.fillText(`${p.country.flag} ${p.name}`, 0, -fontSize * 0.4);
 
         ctx.font = `bold ${fontSize * 0.75}px 'Sora'`;
-        ctx.fillStyle = isSafe ? "#cbd5e0" : "#00ffff";
+        ctx.fillStyle = isStand ? "#e2e8f0" : "#00ffff";
         ctx.fillText(`${p.points.toLocaleString()} PTS`, 0, fontSize * 0.65);
 
         ctx.restore();
@@ -139,34 +227,16 @@
         ctx.scale(camera.zoom, camera.zoom);
         ctx.translate(-camera.x, -camera.y);
 
-        // 1. رسم قسم المسرح العلوي المحمي (Sanctuary Stage)
-        ctx.fillStyle = "rgba(15, 23, 42, 0.6)";
-        ctx.fillRect(200, 200, 6600, 1400);
+        // 1. رسم أرضية الاستاد والعشب
+        drawStadiumPitch();
 
-        Object.keys(countryLandmarks).forEach(code => {
-            const c = countryLandmarks[code];
-            ctx.strokeStyle = c.color;
-            ctx.lineWidth = 4;
-            ctx.strokeRect(c.vaultX - 500, 300, 1000, 1200);
+        // 2. رسم مدرجات الجمهور المحمية
+        drawStandsStructure();
 
-            ctx.fillStyle = c.color;
-            ctx.font = "bold 28px 'Tajawal'";
-            ctx.textAlign = "center";
-            ctx.fillText(`🏰 قبة ${c.name} المحمية`, c.vaultX, 380);
-        });
+        // 3. رسم كرات الحسابات المحفوظة على المدرجات
+        Object.values(standVault).forEach(p => drawOrb(p, true));
 
-        // 2. الفاصل الناري بين المسرح والحلبة
-        ctx.strokeStyle = "#ef4444";
-        ctx.lineWidth = 8;
-        ctx.beginPath(); ctx.moveTo(200, 1800); ctx.lineTo(6800, 1800); ctx.stroke();
-        ctx.fillStyle = "#ef4444";
-        ctx.font = "bold 22px 'Tajawal'";
-        ctx.fillText("⚠️ حلبة الصراع المباشرة (الكرات النشطة فقط) ⚠️", 3500, 1860);
-
-        // 3. رسم الكرات الآمنة في المسرح
-        Object.values(safeVault).forEach(p => drawOrb(p, true));
-
-        // 4. رسم الكرات النشطة في الحلبة
+        // 4. رسم الكرات النشطة التي تلعب على أرضية الملعب
         Object.values(activePlayers).forEach(p => drawOrb(p, false));
 
         ctx.restore();

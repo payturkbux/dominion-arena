@@ -9,31 +9,36 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-let activePlayers = {};  // الكرات المتصلة والنازلة إلى الحلبة
-let safeVault = {};     // الكرات المحفوظة في مسرح الأمان (غير متصلين)
+let activePlayers = {};  // الكرات النازلة على أرض الملعب
+let standVault = {};     // الكرات الموجودة على المدرجات (الآمنة)
 
 const countriesList = [
-    { code: "SY", name: "سوريا", flag: "🇸🇾", vaultX: 1000, vaultY: 800 },
-    { code: "SA", name: "السعودية", flag: "🇸🇦", vaultX: 2200, vaultY: 800 },
-    { code: "TR", name: "تركيا", flag: "🇹🇷", vaultX: 3400, vaultY: 800 },
-    { code: "EG", name: "مصر", flag: "🇪🇬", vaultX: 4600, vaultY: 800 },
-    { code: "AE", name: "الإمارات", flag: "🇦🇪", vaultX: 5800, vaultY: 800 }
+    { code: "SY", name: "سوريا", flag: "🇸🇾", standX: 1200, standY: 450 },
+    { code: "SA", name: "السعودية", flag: "🇸🇦", standX: 2400, standY: 450 },
+    { code: "TR", name: "تركيا", flag: "🇹🇷", standX: 3600, standY: 450 },
+    { code: "EG", name: "مصر", flag: "🇪🇬", standX: 4800, standY: 450 },
+    { code: "AE", name: "الإمارات", flag: "🇦🇪", standX: 6000, standY: 450 }
 ];
 
-// إضافة كرات متواجدة في المسرح المحمي (حسابات غير متصلة)
-countriesList.forEach((c, idx) => {
-    for (let i = 1; i <= 3; i++) {
-        const id = `vault_${c.code}_${i}`;
-        const pts = Math.floor(Math.random() * 30000) + 10000;
-        safeVault[id] = {
+// توزيع كرات الحسابات الحالية على صفوف المدرجات بشكل منظم
+countriesList.forEach((c) => {
+    for (let i = 1; i <= 6; i++) {
+        const id = `stand_${c.code}_${i}`;
+        const pts = Math.floor(Math.random() * 35000) + 12000;
+        
+        // حساب موقع المقعد على المدرج (صفين x 3 أعمدة)
+        const row = Math.floor((i - 1) / 3);
+        const col = (i - 1) % 3;
+
+        standVault[id] = {
             id: id,
             name: `عضو_${c.name}_${i}`,
             country: c,
             points: pts,
-            inVault: true, // مؤشر الأمان
-            x: c.vaultX + (Math.random() - 0.5) * 400,
-            y: c.vaultY + (Math.random() - 0.5) * 300,
-            radius: Math.max(35, Math.sqrt(pts) * 0.45)
+            inStand: true,
+            x: c.standX + (col - 1) * 220,
+            y: c.standY + row * 180,
+            radius: Math.max(38, Math.sqrt(pts) * 0.42)
         };
     }
 });
@@ -41,19 +46,19 @@ countriesList.forEach((c, idx) => {
 wss.on('connection', (ws) => {
     const playerId = 'user_' + Math.random().toString(36).substr(2, 6);
     const userCountry = countriesList[0]; // سوريا افتراضياً
-    const startPts = 25000;
+    const startPts = 30000;
 
-    // عند الاتصال: تنزل الكرة مباشرة إلى حلبة المواجهة
+    // عند الاتصال: تنزل الكرة إلى أرضية الملعب (Pitch)
     activePlayers[playerId] = {
         id: playerId,
-        name: "أنت (نشط)",
+        name: "أنت (اللاعب)",
         country: userCountry,
         points: startPts,
-        inVault: false,
-        x: 3000 + (Math.random() - 0.5) * 600,
-        y: 3500 + (Math.random() - 0.5) * 600,
+        inStand: false,
+        x: 3600 + (Math.random() - 0.5) * 800,
+        y: 3500 + (Math.random() - 0.5) * 800,
         vx: 0, vy: 0,
-        radius: Math.max(35, Math.sqrt(startPts) * 0.45)
+        radius: Math.max(38, Math.sqrt(startPts) * 0.42)
     };
 
     ws.send(JSON.stringify({ type: 'INIT', selfId: playerId }));
@@ -67,8 +72,8 @@ wss.on('connection', (ws) => {
                 const dy = data.y - p.y;
                 const dist = Math.sqrt(dx * dx + dy * dy);
                 if (dist > 10) {
-                    p.vx = (dx / dist) * 6;
-                    p.vy = (dy / dist) * 6;
+                    p.vx = (dx / dist) * 6.5;
+                    p.vy = (dy / dist) * 6.5;
                 } else {
                     p.vx = 0; p.vy = 0;
                 }
@@ -77,20 +82,20 @@ wss.on('connection', (ws) => {
     });
 
     ws.on('close', () => {
-        // عند قطع الاتصال: تعود الكرة فوراً إلى المسرح المحمي بأمان!
+        // عند قطع الاتصال: تعود الكرة فوراً إلى مقعدها بالمدرج بأمان
         if (activePlayers[playerId]) {
             const p = activePlayers[playerId];
-            p.inVault = true;
+            p.inStand = true;
             p.vx = 0; p.vy = 0;
-            p.x = p.country.vaultX;
-            p.y = p.country.vaultY;
-            safeVault[playerId] = p;
+            p.x = p.country.standX;
+            p.y = p.country.standY;
+            standVault[playerId] = p;
             delete activePlayers[playerId];
         }
     });
 });
 
-// Game Loop: تحريك ومعالجة التصادم فقط للكرات الموجودة بالحلبة
+// محرك اللعبة والتصادم داخل حدود أرضية الملعب فقط
 setInterval(() => {
     const activeList = Object.values(activePlayers);
 
@@ -98,12 +103,12 @@ setInterval(() => {
         p.x += p.vx;
         p.y += p.vy;
 
-        // حدود حلبة الصراع السفلية (من Y: 2000 إلى Y: 6000)
-        if (p.x < 200 || p.x > 6800) p.vx *= -1;
-        if (p.y < 2100 || p.y > 5900) p.vy *= -1;
+        // حدود أرضية الملعب (الخطوط البيضاء للمستطيل الأخضر)
+        if (p.x < 500 || p.x > 6700) p.vx *= -1;
+        if (p.y < 1900 || p.y > 5500) p.vy *= -1;
     });
 
-    // التصادم محصور بين الكرات النشطة بالحلبة فقط!
+    // الابتلاع يحدث فقط بين اللاعبين على أرضية الملعب
     for (let i = 0; i < activeList.length; i++) {
         for (let j = i + 1; j < activeList.length; j++) {
             const a = activeList[i];
@@ -117,10 +122,10 @@ setInterval(() => {
                 if (bigger.radius > smaller.radius * 1.1) {
                     smaller.points = Math.max(1, smaller.points - 1);
                     bigger.points += 1;
-                    smaller.radius = Math.max(35, Math.sqrt(smaller.points) * 0.45);
-                    bigger.radius = Math.max(35, Math.sqrt(bigger.points) * 0.45);
-                    smaller.x = 3400 + (Math.random() - 0.5) * 1000;
-                    smaller.y = 4000 + (Math.random() - 0.5) * 1000;
+                    smaller.radius = Math.max(38, Math.sqrt(smaller.points) * 0.42);
+                    bigger.radius = Math.max(38, Math.sqrt(bigger.points) * 0.42);
+                    smaller.x = 3600 + (Math.random() - 0.5) * 1200;
+                    smaller.y = 3700 + (Math.random() - 0.5) * 1200;
                 }
             }
         }
@@ -129,7 +134,7 @@ setInterval(() => {
     const payload = JSON.stringify({ 
         type: 'SYNC', 
         activePlayers: activePlayers,
-        safeVault: safeVault
+        standVault: standVault
     });
 
     wss.clients.forEach(client => {
@@ -140,4 +145,4 @@ setInterval(() => {
 }, 40);
 
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log(`Arena & Safe Haven Server active on port ${PORT}`));
+server.listen(PORT, () => console.log(`Stadium Engine running on port ${PORT}`));
