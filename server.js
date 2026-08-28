@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
@@ -5,10 +6,15 @@ const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 
 // ==========================================
-// 🔗 إعدادات الاتصال بـ Supabase
+// 🔗 إعدادات الاتصال بـ Supabase (تعتمد على Render Environment Variables)
 // ==========================================
-const SUPABASE_URL = process.env.SUPABASE_URL || 'https://bwbgfdteocewitdzrysg.supabase.co';
-const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3YmdmZHRlb2Nld2l0ZHpyeXNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4NTE2MTMsImV4cCI6MjEwMzQyNzYxM30.C7hId5uF-p_7ibGSs0P7a2yxpOD-Zu4ON-lu7Pivn6k'; 
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+    console.error('[Supabase Critical Error] لم يتم العثور على SUPABASE_URL أو SUPABASE_KEY في بيئة التشغيل!');
+}
+
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const app = express();
@@ -123,7 +129,7 @@ function recalculateStandPositions(countryCode) {
 }
 
 /**
- * مزامنة اللاعب وتواجه في مدرجه مع بياناته والرتبة
+ * مزامنة اللاعب وتواجد في مدرجه مع بياناته والرتبة
  */
 function syncTaralaliUserToStand(userData) {
     const { userId, name, countryCode, countryName, flag, countryImage, points, tier } = userData;
@@ -171,9 +177,11 @@ wss.on('connection', async (ws, req) => {
 
         if (!error && data) {
             dbUser = data;
+        } else if (error) {
+            console.error(`[Supabase Fetch Error for ${userId}]:`, error.message);
         }
     } catch (e) {
-        console.error('[Supabase Fetch Error]:', e);
+        console.error('[Supabase Exception]:', e);
     }
 
     const countryCode = (urlParams.get('country') || 'SY').toUpperCase();
@@ -181,7 +189,7 @@ wss.on('connection', async (ws, req) => {
     const flag = urlParams.get('flag') || '🇸🇾';
     const countryImage = urlParams.get('countryImage') || null;
     
-    // ربط الحقول مع الأعمدة الحقيقية من الصورة
+    // ربط الحقول مع الأعمدة الحقيقية من Supabase
     const username = dbUser?.display_name || dbUser?.username || urlParams.get('name') || `لاعب_${userId.substr(0, 4)}`;
     const userPoints = dbUser?.points_balance !== undefined ? dbUser.points_balance : (parseInt(urlParams.get('points'), 10) || 1000);
     const userTier = dbUser?.tier || 'Bronze'; // قراءة عمود tier
@@ -285,8 +293,8 @@ setInterval(() => {
 
         if (p.x - p.radius < PITCH.minX) { p.x = PITCH.minX + p.radius; p.vx = 0; }
         if (p.x + p.radius > PITCH.maxX) { p.x = PITCH.maxX - p.radius; p.vx = 0; }
-        if (p.y - p.radius < PITCH.minY) { p.y = PITCH.minY + p.radius; p.vy = 0; }
-        if (p.y + p.radius > PITCH.maxY) { p.y = PITCH.maxY - p.radius; p.vy = 0; }
+        if (p.y - p.radius < PITCH.minY) { p.y = PITCH.minY + p.radius; p.vx = 0; }
+        if (p.y + p.radius > PITCH.maxY) { p.y = PITCH.maxY - p.radius; p.vx = 0; }
     });
 
     for (let i = 0; i < activeList.length; i++) {
