@@ -9,7 +9,6 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static('public'));
 
-// ⚡ قراءة المفاتيح مباشرة من متغيرة البيئة في Render
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
 const STAND_LOCATIONS = {
@@ -20,8 +19,42 @@ const STAND_LOCATIONS = {
     "AE": { x: 6000, y: 1100 }
 };
 
-let activePlayers = {};
-let standVault = {};
+let activePlayers = {}; 
+let standVault = {};    
+
+// 📥 جلب المستخدمين الخاملين من Supabase لملء المدرجات
+async function loadOfflinePlayersToStands() {
+    try {
+        const { data: users, error } = await supabase
+            .from('profiles')
+            .select('id, display_name, points_balance, tier, country_code')
+            .limit(50);
+
+        if (users && !error) {
+            users.forEach(u => {
+                const country = u.country_code || 'SY';
+                const stand = STAND_LOCATIONS[country] || STAND_LOCATIONS['SY'];
+                
+                standVault[u.id] = {
+                    id: u.id,
+                    name: u.display_name || 'لاعب',
+                    points: u.points_balance || 0,
+                    tier: u.tier || 'Bronze',
+                    inStand: true,
+                    x: stand.x + (Math.random() * 400 - 200),
+                    y: stand.y + (Math.random() * 200 - 100),
+                    radius: 35,
+                    country: { code: country }
+                };
+            });
+        }
+    } catch (err) {
+        console.error("خطأ في تحميل بيانات مدرجات Supabase:", err);
+    }
+}
+
+// تحميل الجمهور إلى المدرجات عند تشغيل السيرفر
+loadOfflinePlayersToStands();
 
 wss.on('connection', async (ws, req) => {
     const urlParams = new URLSearchParams(req.url.replace(/^.*\?/, ''));
@@ -30,58 +63,35 @@ wss.on('connection', async (ws, req) => {
 
     ws.id = socketId;
 
-    let userData = {
-        name: 'لاعب جديد',
-        points: 100,
-        tier: 'Bronze',
-        countryCode: 'SY'
-    };
-
-    if (userId) {
-        const { data, error } = await supabase
-            .from('profiles')
-            .select('display_name, points_balance, tier, country_code')
-            .eq('id', userId)
-            .single();
-
-        if (data && !error) {
-            userData.name = data.display_name || userData.name;
-            userData.points = data.points_balance ?? userData.points;
-            userData.tier = data.tier || userData.tier;
-            userData.countryCode = data.country_code || userData.countryCode;
-        }
-    }
-
-    const initialStand = STAND_LOCATIONS[userData.countryCode] || STAND_LOCATIONS["SY"];
-
-    standVault[socketId] = {
-        id: socketId,
-        name: userData.name,
-        points: userData.points,
-        tier: userData.tier,
-        inStand: true,
-        x: initialStand.x + (Math.random() * 100 - 50),
-        y: initialStand.y + (Math.random() * 100 - 50),
-        radius: 40,
-        country: { code: userData.countryCode }
-    };
-
+    // إرسال معرف الجلسة
     ws.send(JSON.stringify({ type: 'INIT', selfId: socketId }));
 
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
+            
+            // عند النقر ينزل اللاعب من المدرج إلى الساحة
             if (data.type === 'ENTER_ARENA') {
-                if (standVault[socketId]) {
-                    const p = standVault[socketId];
-                    delete standVault[socketId];
-                    p.inStand = false;
-                    p.x = data.targetX || 3600;
-                    p.y = data.targetY || 3700;
-                    p.targetX = p.x;
-                    p.targetY = p.y;
-                    activePlayers[socketId] = p;
+                let player = standVault[socketId];
+                if (!player) {
+                    player = {
+                        id: socketId,
+                        name: 'لاعب نشط',
+                        points: 100,
+                        tier: 'Bronze',
+                        country: { code: 'SY' }
+                    };
+                } else {
+                    delete standVault[socketId]; // إزالته من الخاملين بالمدرج
                 }
+                
+                player.inStand = false;
+                player.x = data.targetX || 3600;
+                player.y = data.targetY || 3700;
+                player.targetX = player.x;
+                player.targetY = player.y;
+                
+                activePlayers[socketId] = player;
             } else if (data.type === 'TARGET') {
                 if (activePlayers[socketId]) {
                     activePlayers[socketId].targetX = data.x;
@@ -92,11 +102,20 @@ wss.on('connection', async (ws, req) => {
     });
 
     ws.on('close', () => {
-        delete activePlayers[socketId];
-        delete standVault[socketId];
+        // إعادة اللاعب إلى المدرج إذا قطع الاتصال
+        if (activePlayers[socketId]) {
+            const player = activePlayers[socketId];
+            delete activePlayers[socketId];
+            player.inStand = true;
+            const stand = STAND_LOCATIONS[player.country?.code] || STAND_LOCATIONS['SY'];
+            player.x = stand.x;
+            player.y = stand.y;
+            standVault[socketId] = player;
+        }
     });
 });
 
+// بث التحديثات المستمرة للواجهة (30 FPS)
 setInterval(() => {
     Object.values(activePlayers).forEach(p => {
         if (p.targetX !== undefined && p.targetY !== undefined) {
