@@ -12,18 +12,17 @@ app.use(express.static(path.join(__dirname, 'public')));
 let activePlayers = {};
 let standVault = {};
 
-// حدود المستطيل الأخضر بدقة
 const PITCH = { minX: 550, maxX: 6650, minY: 1950, maxY: 5450 };
 
+// نقل المدرجات لتكون قريبة جداً فوق أرضية العشب مباشرة (y: 1100)
 const countriesList = [
-    { code: "SY", name: "سوريا", flag: "🇸🇾", standX: 1200, standY: 450 },
-    { code: "SA", name: "السعودية", flag: "🇸🇦", standX: 2400, standY: 450 },
-    { code: "TR", name: "تركيا", flag: "🇹🇷", standX: 3600, standY: 450 },
-    { code: "EG", name: "مصر", flag: "🇪🇬", standX: 4800, standY: 450 },
-    { code: "AE", name: "الإمارات", flag: "🇦🇪", standX: 6000, standY: 450 }
+    { code: "SY", name: "سوريا", flag: "🇸🇾", standX: 1200, standY: 1100 },
+    { code: "SA", name: "السعودية", flag: "🇸🇦", standX: 2400, standY: 1100 },
+    { code: "TR", name: "تركيا", flag: "🇹🇷", standX: 3600, standY: 1100 },
+    { code: "EG", name: "مصر", flag: "🇪🇬", standX: 4800, standY: 1100 },
+    { code: "AE", name: "الإمارات", flag: "🇦🇪", standX: 6000, standY: 1100 }
 ];
 
-// توزيع كرات الحسابات المحفوظة
 countriesList.forEach((c) => {
     for (let i = 1; i <= 6; i++) {
         const id = `stand_${c.code}_${i}`;
@@ -37,8 +36,8 @@ countriesList.forEach((c) => {
             country: c,
             points: pts,
             inStand: true,
-            x: c.standX + (col - 1) * 220,
-            y: c.standY + row * 180,
+            x: c.standX + (col - 1) * 200,
+            y: c.standY + row * 160,
             radius: Math.max(38, Math.sqrt(pts) * 0.42)
         };
     }
@@ -101,7 +100,6 @@ setInterval(() => {
         p.x += p.vx;
         p.y += p.vy;
 
-        // منع الكرة تماماً من تجاوز حدود العشب (Collision Containment)
         if (p.x - p.radius < PITCH.minX) { p.x = PITCH.minX + p.radius; p.vx = 0; }
         if (p.x + p.radius > PITCH.maxX) { p.x = PITCH.maxX - p.radius; p.vx = 0; }
         if (p.y - p.radius < PITCH.minY) { p.y = PITCH.minY + p.radius; p.vy = 0; }
@@ -138,4 +136,4 @@ setInterval(() => {
 }, 40);
 
 const PORT = process.env.PORT || 10000;
-server.listen(PORT, () => console.log(`Arena Engine with Pitch Boundaries running on port ${PORT}`));
+server.listen(PORT, () => console.log(`Stadium Server active on port ${PORT}`));
