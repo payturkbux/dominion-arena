@@ -9,20 +9,48 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// 1. تعريف مصفوفة اللاعبين في البداية لتجنب خطأ ReferenceError
 let players = {};
 
-// تحويل رمز الدولة إلى علم Emoji
+// قائمة الدول المتاحة مع أعلامها ومعالمها
+const countriesList = [
+    { code: "SY", name: "سوريا", flag: "🇸🇾" },
+    { code: "SA", name: "السعودية", flag: "🇸🇦" },
+    { code: "TR", name: "تركيا", flag: "🇹🇷" },
+    { code: "EG", name: "مصر", flag: "🇪🇬" },
+    { code: "AE", name: "الإمارات", flag: "🇦🇪" },
+    { code: "IQ", name: "العراق", flag: "🇮🇶" }
+];
+
 function getFlagEmoji(countryCode) {
-    if (!countryCode || countryCode.length !== 2) return "🌐";
-    const codePoints = countryCode
-        .toUpperCase()
-        .split('')
-        .map(char => 127397 + char.charCodeAt(0));
-    return String.fromCodePoint(...codePoints);
+    const found = countriesList.find(c => c.code === countryCode);
+    return found ? found.flag : "🌐";
 }
 
-// 2. إيقاف وإدارة الاتصالات عبر WebSocket
+// 1. توليد لاعبين/بوتات محاكاة لإضفاء الحيوية للميدان
+function spawnBotPlayer(idSuffix) {
+    const country = countriesList[Math.floor(Math.random() * countriesList.length)];
+    const playerId = 'bot_' + idSuffix;
+    const points = Math.floor(Math.random() * 45000) + 3000;
+
+    players[playerId] = {
+        id: playerId,
+        name: `King_${idSuffix}`,
+        country: { code: country.code, name: country.name, flag: country.flag },
+        points: points,
+        x: Math.random() * 5000 + 500,
+        y: Math.random() * 5000 + 500,
+        vx: (Math.random() - 0.5) * 5,
+        vy: (Math.random() - 0.5) * 5,
+        radius: Math.max(35, Math.sqrt(points) * 0.45)
+    };
+}
+
+// إنشاء 8 بوتات عند بدء الخادم
+for (let i = 1; i <= 8; i++) {
+    spawnBotPlayer(i);
+}
+
+// 2. إدارة الاتصال الفعلي للاعبين عبر WebSocket
 wss.on('connection', async (ws, req) => {
     const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
     
@@ -36,35 +64,32 @@ wss.on('connection', async (ws, req) => {
             countryCode = geoData.country_code;
             countryName = geoData.country_name;
         }
-    } catch (e) {
-        console.log("GeoIP fallback used for IP:", ip);
-    }
+    } catch (e) {}
 
-    const playerId = 'player_' + Math.random().toString(36).substr(2, 9);
-    const points = Math.floor(Math.random() * 30000) + 5000;
-    
-    // إنشاء بيانات اللاعب الجديد
+    const playerId = 'user_' + Math.random().toString(36).substr(2, 7);
+    const points = Math.floor(Math.random() * 25000) + 12000;
+
     players[playerId] = {
         id: playerId,
-        name: `Dominator_${playerId.substr(7)}`,
+        name: `أنت (اللاعب)`,
         country: { code: countryCode, name: countryName, flag: getFlagEmoji(countryCode) },
         points: points,
         x: Math.random() * 4000 + 1000,
         y: Math.random() * 4000 + 1000,
-        vx: (Math.random() - 0.5) * 6,
-        vy: (Math.random() - 0.5) * 6,
-        radius: Math.max(30, Math.sqrt(points) * 0.4)
+        vx: (Math.random() - 0.5) * 3,
+        vy: (Math.random() - 0.5) * 3,
+        radius: Math.max(40, Math.sqrt(points) * 0.45)
     };
 
-    // إرسال معرف اللاعب الموصل
     ws.send(JSON.stringify({ type: 'INIT', selfId: playerId, players }));
 
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
-            if (data.type === 'MOVE' && players[playerId]) {
-                players[playerId].x = data.x;
-                players[playerId].y = data.y;
+            // إمكانية تحديث نقاط أو إحداثيات اللاعب الحقيقي
+            if (data.type === 'UPDATE_SCORE' && players[playerId]) {
+                players[playerId].points = data.points;
+                players[playerId].radius = Math.max(35, Math.sqrt(data.points) * 0.45);
             }
         } catch (err) {}
     });
@@ -74,15 +99,22 @@ wss.on('connection', async (ws, req) => {
     });
 });
 
-// 3. حلقة تحريك الكرات وبث البيانات (Loop)
+// 3. محاكة حركة الكرات وتغير النقاط المباشر (Game Loop)
 setInterval(() => {
     Object.values(players).forEach(p => {
         p.x += p.vx;
         p.y += p.vy;
 
-        // ارتداد من الجدران
-        if (p.x < 100 || p.x > 5900) p.vx *= -1;
-        if (p.y < 100 || p.y > 5900) p.vy *= -1;
+        // ارتداد الكرات من الحدود
+        if (p.x < 150 || p.x > 5850) p.vx *= -1;
+        if (p.y < 150 || p.y > 5850) p.vy *= -1;
+
+        // تغير طفيف في النقاط لزيادة الحيوية
+        if (Math.random() < 0.05) {
+            p.points += Math.floor((Math.random() - 0.48) * 150);
+            p.points = Math.max(1000, p.points);
+            p.radius = Math.max(35, Math.sqrt(p.points) * 0.45);
+        }
     });
 
     const payload = JSON.stringify({ type: 'SYNC', players });
@@ -95,5 +127,5 @@ setInterval(() => {
 
 const PORT = process.env.PORT || 10000;
 server.listen(PORT, () => {
-    console.log(`Dominance Server running on port ${PORT}`);
+    console.log(`Dominance Engine running with Active Bots & Live Sync on port ${PORT}`);
 });
