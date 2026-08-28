@@ -1,1 +1,185 @@
-{\rtf1}
+<!DOCTYPE html>
+<html class="dark" lang="ar" dir="rtl">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Dominion Arena - Live Render Hub</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Tajawal:wght@500;700;900&display=swap" rel="stylesheet"/>
+    <style>
+        body { font-family: 'Tajawal', sans-serif; background-color: #08090c; margin: 0; overflow: hidden; }
+        .glass-hud { background: rgba(15, 17, 23, 0.75); backdrop-filter: blur(16px); border: 1px solid rgba(255, 255, 255, 0.1); }
+    </style>
+</head>
+<body class="text-white relative w-screen h-screen">
+
+    <!-- Top Dominance HUD -->
+    <header class="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-6 glass-hud px-8 py-3 rounded-2xl shadow-2xl border border-cyan-500/30">
+        <div class="flex items-center gap-3">
+            <span id="dominantFlag" class="text-3xl animate-bounce">🌐</span>
+            <div>
+                <div class="text-[10px] uppercase text-cyan-400 font-bold tracking-widest">الدولة المهيمنة على الميدان</div>
+                <div id="dominantCountry" class="text-lg font-black text-white">جاري الحساب...</div>
+            </div>
+        </div>
+        <div class="h-8 w-[1px] bg-white/10"></div>
+        <div class="flex flex-col items-end">
+            <div class="text-[10px] uppercase text-gray-400 font-bold tracking-widest">حالة الاتصال بالسيرفر</div>
+            <div id="connectionStatus" class="text-sm font-bold text-emerald-400 flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> متصل بـ Render
+            </div>
+        </div>
+    </header>
+
+    <!-- Side Leaderboard HUD -->
+    <aside class="absolute top-6 right-6 z-30 w-80 glass-hud p-5 rounded-2xl border border-white/10">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="font-bold text-sm text-cyan-400 flex items-center gap-2">أعظم الأباطرة المباشرين</h2>
+            <span class="text-xs text-gray-400 font-['Sora']" id="activePlayerCount">0 لاعب</span>
+        </div>
+        <div id="leaderboardList" class="space-y-2 text-xs"></div>
+    </aside>
+
+    <!-- Main Canvas Arena -->
+    <canvas id="worldCanvas" class="w-full h-full block cursor-grab active:cursor-grabbing"></canvas>
+
+<script>
+    const canvas = document.getElementById('worldCanvas');
+    const ctx = canvas.getContext('2d');
+    const WORLD_SIZE = { width: 6000, height: 6000 };
+
+    let screenWidth, screenHeight;
+    function resize() {
+        screenWidth = canvas.width = window.innerWidth;
+        screenHeight = canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    let camera = { x: WORLD_SIZE.width / 2, y: WORLD_SIZE.height / 2, zoom: 0.6 };
+    let remotePlayers = {};
+    let selfId = null;
+
+    // الاتصال بسيرفر WebSocket المباشر على Render
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}`;
+    const socket = new WebSocket(wsUrl);
+
+    socket.onopen = () => {
+        document.getElementById('connectionStatus').innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span> متصل بـ Render`;
+    };
+
+    socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'INIT') {
+            selfId = data.selfId;
+            remotePlayers = data.players;
+        } else if (data.type === 'SYNC') {
+            remotePlayers = data.players;
+            updateHUD();
+        }
+    };
+
+    socket.onclose = () => {
+        document.getElementById('connectionStatus').innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500"></span> انقطع الاتصال`;
+    };
+
+    function updateHUD() {
+        const playerArray = Object.values(remotePlayers).sort((a, b) => b.points - a.points);
+        document.getElementById('activePlayerCount').innerText = `${playerArray.length} لاعب`;
+
+        if (playerArray.length > 0) {
+            const top = playerArray[0];
+            document.getElementById('dominantFlag').innerText = top.country.flag;
+            document.getElementById('dominantCountry').innerText = `دولة ${top.country.name}`;
+
+            // الكاميرا تتبع اللاعب الأكبر تلقائياً (Auto-Pilot Spectate)
+            camera.x += (top.x - camera.x) * 0.05;
+            camera.y += (top.y - camera.y) * 0.05;
+        }
+
+        const listContainer = document.getElementById('leaderboardList');
+        listContainer.innerHTML = '';
+        playerArray.slice(0, 5).forEach((p, idx) => {
+            const row = document.createElement('div');
+            row.className = "flex justify-between items-center bg-white/5 p-2 rounded-xl border border-white/5";
+            row.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <span class="font-bold font-['Sora'] text-cyan-400">#${idx + 1}</span>
+                    <span>${p.country.flag}</span>
+                    <span class="font-bold text-white">${p.name}</span>
+                </div>
+                <span class="font-['Sora'] text-cyan-300 font-bold">${p.points.toLocaleString()}</span>
+            `;
+            listContainer.appendChild(row);
+        });
+    }
+
+    function render() {
+        ctx.clearRect(0, 0, screenWidth, screenHeight);
+        ctx.save();
+        ctx.translate(screenWidth / 2, screenHeight / 2);
+        ctx.scale(camera.zoom, camera.zoom);
+        ctx.translate(-camera.x, -camera.y);
+
+        // 1. شبكة الخريطة
+        ctx.strokeStyle = "rgba(0, 245, 255, 0.04)";
+        ctx.lineWidth = 2;
+        for (let x = 0; x <= WORLD_SIZE.width; x += 100) {
+            ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, WORLD_SIZE.height); ctx.stroke();
+        }
+        for (let y = 0; y <= WORLD_SIZE.height; y += 100) {
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WORLD_SIZE.width, y); ctx.stroke();
+        }
+
+        // 2. حدود الميدان النيون
+        ctx.strokeStyle = "#00f5ff";
+        ctx.lineWidth = 10;
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = "#00f5ff";
+        ctx.strokeRect(0, 0, WORLD_SIZE.width, WORLD_SIZE.height);
+        ctx.shadowBlur = 0;
+
+        // 3. رسم الكرات البراقة المتصلة من السيرفر
+        Object.values(remotePlayers).forEach(p => {
+            ctx.save();
+            ctx.translate(p.x, p.y);
+
+            ctx.beginPath();
+            ctx.arc(0, 0, p.radius, 0, Math.PI * 2);
+            
+            let grad = ctx.createRadialGradient(0, 0, 5, 0, 0, p.radius);
+            grad.addColorStop(0, "#ffffff");
+            grad.addColorStop(0.5, "#00f5ff");
+            grad.addColorStop(1, "rgba(10,12,18,0.9)");
+
+            ctx.fillStyle = grad;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = "#00f5ff";
+            ctx.fill();
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // معلومات الكرة
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = "#ffffff";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.font = "bold 14px 'Tajawal'";
+            ctx.fillText(`${p.country.flag} ${p.name}`, 0, -8);
+            ctx.font = "bold 10px 'Sora'";
+            ctx.fillStyle = "#00ffff";
+            ctx.fillText(`${p.points} PTS`, 0, 10);
+
+            ctx.restore();
+        });
+
+        ctx.restore();
+        requestAnimationFrame(render);
+    }
+
+    render();
+</script>
+</body>
+</html>
