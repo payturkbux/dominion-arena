@@ -46,6 +46,10 @@
                 <span id="connectionStatus" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-950 text-red-400 border border-red-500/30">
                     <span class="w-2 h-2 rounded-full bg-red-500"></span> غير متصل
                 </span>
+                <!-- زر تسجيل الخروج الجديد -->
+                <button onclick="logoutAdmin()" class="bg-red-600/20 hover:bg-red-600/40 text-red-300 border border-red-500/40 font-bold px-3 py-1.5 rounded-xl text-xs transition active:scale-95 flex items-center gap-1">
+                    🚪 خروج
+                </button>
             </div>
         </header>
 
@@ -75,8 +79,6 @@
 
         <!-- أزرار التحكم الفوري بالبوتات والزوار -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            
-            <!-- لوحة التحكم بالبوتات -->
             <div class="glass-panel p-6 rounded-3xl space-y-4">
                 <h2 class="text-base font-bold text-amber-300 flex items-center gap-2">
                     <span>🤖</span> التحكم بالبوتات
@@ -93,7 +95,6 @@
                 </button>
             </div>
 
-            <!-- لوحة التحكم برصيد الزوار -->
             <div class="glass-panel p-6 rounded-3xl space-y-4">
                 <h2 class="text-base font-bold text-amber-300 flex items-center gap-2">
                     <span>💵</span> تعديل رصيد الزوار
@@ -106,10 +107,9 @@
                 </div>
                 <p class="text-xs text-gray-400">سيتم تطبيق الرصيد الجديد على الزوار النشطين والجدد عند الدخول.</p>
             </div>
-
         </div>
 
-        <!-- قائمة الزوار النشطين لتعديل أرصدتهم فردياً -->
+        <!-- قائمة الزوار -->
         <div class="glass-panel p-6 rounded-3xl space-y-4">
             <h2 class="text-base font-bold text-amber-300 flex items-center gap-2">
                 <span>👤</span> الزوار النشطون حالياً في الساحة
@@ -134,7 +134,7 @@
             </div>
         </div>
 
-        <!-- جدول مدرجات الدول الـ20 -->
+        <!-- جدول المدرجات -->
         <div class="glass-panel p-6 rounded-3xl space-y-4">
             <h2 class="text-base font-bold text-amber-300 flex items-center gap-2">
                 <span>🏛️</span> حالة المدرجات الـ20 المحيطة بالساحة
@@ -191,7 +191,17 @@
         connectWebSocket();
     }
 
+    function logoutAdmin() {
+        localStorage.removeItem('dominion_admin_secret');
+        adminSecretKey = "";
+        if (ws) ws.close();
+        document.getElementById('dashboardContent').classList.add('hidden');
+        document.getElementById('authModal').classList.remove('hidden');
+        document.getElementById('adminSecretInput').value = "";
+    }
+
     function connectWebSocket() {
+        if (ws) ws.close();
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         ws = new WebSocket(`${protocol}//${window.location.host}?userId=admin_dashboard`);
 
@@ -206,6 +216,9 @@
                 const data = JSON.parse(event.data);
                 if (data.type === 'SYNC') {
                     updateDashboard(data);
+                } else if (data.type === 'ERROR') {
+                    console.error("خطأ من السيرفر:", data.message);
+                    alert("خطأ: " + (data.message || "فشل تنفيذ الأمر"));
                 }
             } catch (e) {}
         };
@@ -214,7 +227,6 @@
             const statusEl = document.getElementById('connectionStatus');
             statusEl.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-950 text-red-400 border border-red-500/30";
             statusEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500"></span> غير متصل`;
-            setTimeout(connectWebSocket, 3000);
         };
     }
 
@@ -230,7 +242,6 @@
         document.getElementById('admBotCount').innerText = bots.length;
         document.getElementById('admIncentivePool').innerText = `${syncData.incentivePool || 0} / 10`;
 
-        // تحديث جدول الزوار
         const guestsTable = document.getElementById('admGuestsTable');
         if (guestsTable) {
             if (guests.length === 0) {
@@ -252,7 +263,6 @@
             }
         }
 
-        // تحديث جدول المدرجات
         const table = document.getElementById('admCountriesTable');
         if (table && syncData.standTotals) {
             table.innerHTML = Object.keys(syncData.standTotals).map(code => {
@@ -281,6 +291,8 @@
                 adminKey: adminSecretKey,
                 ...extraData
             }));
+        } else {
+            alert("غير متصل بالسيرفر!");
         }
     }
 
