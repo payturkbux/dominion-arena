@@ -51,7 +51,6 @@ function calculateRadius(points) {
     return Math.min(1200, Math.max(60, Math.round(calculatedRadius)));
 }
 
-// 🐌 ضبط سرعة البوتات لتكون ثابته وانسيابية
 function getBotMoveSpeed(radius) {
     return Math.max(4, 12 - (radius / 100));
 }
@@ -70,7 +69,7 @@ function getCountryInfo(code) {
 }
 
 function isGuestPlayer(player) {
-    return !player || player.id.startsWith('guest_');
+    return !player || String(player.id).startsWith('guest_');
 }
 
 function getRandomOffPitchPosition(countryCode) {
@@ -97,7 +96,6 @@ function getRandomOnPitchPosition(radius) {
     };
 }
 
-// 📊 دالة حساب مجموع أرصدة اللاعبين والمدرجات التابعة لكل دولة
 function getStandTotals() {
     const totals = { "SY": 0, "SA": 0, "TR": 0, "EG": 0, "AE": 0 };
     
@@ -118,8 +116,8 @@ function getStandTotals() {
     return totals;
 }
 
-// 🤖 إنشاء البوتات الابتدائية
-function spawnBot(botId, initialPoints = 5) {
+// 🤖 إنشاء البوتات الابتدائية بحجم ثابت ومستقر
+function spawnBot(botId, initialPoints = 50) {
     const randomName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
     const randomCountry = COUNTRIES[Math.floor(Math.random() * COUNTRIES.length)];
     
@@ -143,31 +141,7 @@ function spawnBot(botId, initialPoints = 5) {
 }
 
 for (let i = 1; i <= 15; i++) {
-    spawnBot(`bot_${i}`, 5);
-}
-
-// 📈 ربط نقاط وحجم البوتات بصندوق التحفيز بتدرج متناسب
-function adjustBotsToIncentivePool() {
-    const bots = Object.values(activePlayers).filter(p => p.isBot);
-    if (bots.length === 0) return;
-
-    let targetTotal = Math.max(15, incentivePool); // ضمان حد أدنى لنقاط البوتات
-    const numBots = bots.length;
-
-    // مصفوفة أوزان متدرجة (البوت الأول يكون كبيراً والبقية تتدرج تنازلياً)
-    let weights = [];
-    let weightSum = 0;
-    for (let i = 0; i < numBots; i++) {
-        let w = Math.pow(0.75, i); 
-        weights.push(w);
-        weightSum += w;
-    }
-
-    bots.forEach((bot, idx) => {
-        let allocatedPoints = Math.max(1, Math.floor((weights[idx] / weightSum) * targetTotal));
-        bot.points = allocatedPoints;
-        bot.radius = calculateRadius(allocatedPoints);
-    });
+    spawnBot(`bot_${i}`, Math.floor(Math.random() * 200) + 20);
 }
 
 async function loadOfflinePlayersToStands() {
@@ -259,7 +233,6 @@ wss.on('connection', async (ws, req) => {
         profileData = data;
     }
 
-    // 🎯 الزائر يبدأ بـ 10 نقاط والمستخدم المسجل بحسب رصيده
     const isGuest = socketId.startsWith('guest_');
     const balance = isGuest ? 10 : Number(profileData?.points_balance || 0);
     const country = profileData?.country_code || selectedCountry;
@@ -300,7 +273,7 @@ wss.on('connection', async (ws, req) => {
                     let p = standVault[socketId];
                     delete standVault[socketId];
 
-                    if (isGuestPlayer(p)) p.points = 10; // إعادة تعيين نقاط الزائر لـ 10 عند العودة
+                    if (isGuestPlayer(p)) p.points = 10;
                     p.radius = calculateRadius(p.points);
 
                     const spawnPos = getRandomOnPitchPosition(p.radius || 60);
@@ -352,7 +325,7 @@ wss.on('close', () => {
     clearInterval(pingInterval);
 });
 
-// ⚔️ فحص التصادمات بناءً على الحجم والواقعية
+// ⚔️ فحص التصادمات وقواعد الابتلاع
 function checkCollisions() {
     const players = Object.values(activePlayers);
     const count = players.length;
@@ -368,15 +341,13 @@ function checkCollisions() {
             const dy = p2.y - p1.y;
             const distance = Math.hypot(dx, dy) || 1;
 
-            const maxRadius = Math.max(p1.radius, p2.radius);
+            const minOverlapDist = Math.max(p1.radius, p2.radius) * 0.75;
             
-            // تحقق الابتلاع عند التداخل القريب
-            if (distance < maxRadius * 0.75) {
-                // 🌟 جعل الابتلاع معتمداً كلياً على الحجم لجميع الكرات
+            if (distance < minOverlapDist) {
+                // شرط الابتلاع: الأكبر حجماً يبتلع الأصغر فقط (فارق 5%)
                 if (p1.radius > p2.radius * 1.05) {
                     executeEat(p1, p2);
-                } 
-                else if (p2.radius > p1.radius * 1.05) {
+                } else if (p2.radius > p1.radius * 1.05) {
                     executeEat(p2, p1);
                 }
             }
@@ -385,52 +356,32 @@ function checkCollisions() {
 }
 
 function executeEat(predator, victim) {
-    const stolenPoints = Math.max(1, Math.floor(victim.points * 0.5) || 1);
+    const pointDelta = 1; // زيادة نقطة واحدة للقاتل وخسارة نقطة واحدة للضحية
 
+    // 1. تحديث نقاط المفترس
     if (predator.isBot) {
         predator.eatenPool = (predator.eatenPool || 0) + 1;
-        predator.points += stolenPoints;
+        predator.points += pointDelta;
         predator.radius = calculateRadius(predator.points);
     } else if (isGuestPlayer(predator)) {
-        // نمو الزائر وتحديث صندوق التحفيز
-        predator.points = (predator.points || 0) + stolenPoints;
+        predator.points = (predator.points || 0) + pointDelta;
         predator.radius = calculateRadius(predator.points);
-
-        incentivePool += stolenPoints;
-
-        let realUsers = Object.values(activePlayers).filter(p => !isGuestPlayer(p) && !p.isBot && p.id !== victim.id);
-        realUsers.sort((a, b) => a.points - b.points);
-
-        if (realUsers.length > 0 && incentivePool > 0) {
-            const distributeAmount = Math.floor(incentivePool * 0.5);
-            if (distributeAmount > 0) {
-                const targetsCount = Math.min(3, realUsers.length);
-                const share = Math.floor(distributeAmount / targetsCount) || 1;
-
-                for (let i = 0; i < targetsCount; i++) {
-                    const target = realUsers[i];
-                    target.points += share;
-                    target.radius = calculateRadius(target.points);
-                    updatePointsSafely(target.id, share);
-                }
-                incentivePool -= distributeAmount;
-            }
-        }
     } else {
-        predator.points += stolenPoints;
+        predator.points += pointDelta;
         predator.radius = calculateRadius(predator.points);
-        updatePointsSafely(predator.id, stolenPoints);
+        updatePointsSafely(predator.id, pointDelta);
     }
 
+    // 2. تحديث نقاط الضحية وإزالته إلى المدرجات
     if (victim.isBot) {
         const botId = victim.id;
         delete activePlayers[botId];
-        setTimeout(() => spawnBot(botId, 5), 3000); 
+        setTimeout(() => spawnBot(botId, 30), 5000); 
     } else {
-        victim.points = Math.max(0, victim.points - stolenPoints);
+        victim.points = Math.max(0, victim.points - pointDelta);
         victim.radius = calculateRadius(victim.points);
 
-        updatePointsSafely(victim.id, -stolenPoints);
+        updatePointsSafely(victim.id, -pointDelta);
 
         delete activePlayers[victim.id];
         victim.inStand = true;
@@ -457,14 +408,10 @@ function executeEat(predator, victim) {
 
 // 🎯 حلقة التحديث الرئيسية (30 FPS)
 setInterval(() => {
-    // تحديث أوزان وأحجام البوتات بالنسبة لصندوق التحفيز
-    adjustBotsToIncentivePool();
-
     Object.values(activePlayers).forEach(p => {
         const r = p.radius || 60;
 
         if (p.isBot) {
-            // 🤖 حركة البوتات الانسيابية
             p.changeTimer--;
             if (p.changeTimer <= 0) {
                 p.angle += (Math.random() - 0.5) * 0.8; 
@@ -475,7 +422,6 @@ setInterval(() => {
             p.x += Math.cos(p.angle) * botSpeed;
             p.y += Math.sin(p.angle) * botSpeed;
 
-            // 🛡️ انحراف عند الوصول للحدود
             if (p.x <= PITCH_BOUNDS.minX + r) {
                 p.x = PITCH_BOUNDS.minX + r;
                 p.angle = Math.PI - p.angle;
@@ -495,7 +441,6 @@ setInterval(() => {
             p.targetX = p.x;
             p.targetY = p.y;
         } else {
-            // 🕹️ حركة اللاعب الحقيقي
             if (typeof p.targetX === 'number' && typeof p.targetY === 'number') {
                 const dx = p.targetX - p.x;
                 const dy = p.targetY - p.y;
@@ -532,4 +477,4 @@ setInterval(() => {
 }, 1000 / 30);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Agario Mobile-Optimized Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
