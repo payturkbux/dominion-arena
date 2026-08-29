@@ -171,15 +171,15 @@
     window.addEventListener('resize', resize);
     resize();
 
-    // 🏟️ الأبعاد الجديدة والمكبرة للساحة (عرضية)
-    const PITCH_BOUNDS = { minX: 500, maxX: 8500, minY: 1000, maxY: 6000 };
+    // 🏟️ الأبعاد الكبرى الجديدة للساحة المحدثة (توسيع بنسبة +30%)
+    const PITCH_BOUNDS = { minX: 0, maxX: 10000, minY: 0, maxY: 7000 };
 
     // نقطة المنتصف الجديدة
     const centerX = (PITCH_BOUNDS.maxX + PITCH_BOUNDS.minX) / 2;
     const centerY = (PITCH_BOUNDS.maxY + PITCH_BOUNDS.minY) / 2;
 
-    let camera = { x: centerX, y: centerY, zoom: 0.25, targetZoom: 0.25 };
-    const MIN_ZOOM = 0.15;
+    let camera = { x: centerX, y: centerY, zoom: 0.20, targetZoom: 0.20 };
+    const MIN_ZOOM = 0.10;
     const MAX_ZOOM = 1.20;
 
     let activePlayers = {};
@@ -376,7 +376,6 @@
         handlePointerMove(e.clientX, e.clientY);
     });
 
-    // 📱 منطق التحكم باللمس وزوم الأصبعين
     let initialPinchDistance = null;
     let initialTargetZoom = camera.targetZoom;
 
@@ -441,16 +440,16 @@
         }).join('');
     }
 
-    // 🏟️ رسم الساحة العرضية المكبرة
+    // 🏟️ رسم الساحة العرضية المكبرة بالكامل
     function drawStadiumPitch() {
         ctx.fillStyle = "#0c1220";
-        ctx.fillRect(-2000, -2000, 13000, 11000);
+        ctx.fillRect(-2000, -2000, 14000, 11000);
 
-        let lightGrad = ctx.createRadialGradient(centerX, centerY, 1000, centerX, centerY, 7000);
+        let lightGrad = ctx.createRadialGradient(centerX, centerY, 1000, centerX, centerY, 8000);
         lightGrad.addColorStop(0, "rgba(0, 245, 255, 0.12)");
         lightGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
         ctx.fillStyle = lightGrad;
-        ctx.fillRect(-2000, -2000, 13000, 11000);
+        ctx.fillRect(-2000, -2000, 14000, 11000);
 
         let pitchWidth = PITCH_BOUNDS.maxX - PITCH_BOUNDS.minX;
         let pitchHeight = PITCH_BOUNDS.maxY - PITCH_BOUNDS.minY;
@@ -463,8 +462,8 @@
         ctx.fillRect(PITCH_BOUNDS.minX, PITCH_BOUNDS.minY, pitchWidth, pitchHeight);
 
         ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
-        for (let x = PITCH_BOUNDS.minX; x < PITCH_BOUNDS.maxX; x += 400) {
-            ctx.fillRect(x, PITCH_BOUNDS.minY, 200, pitchHeight);
+        for (let x = PITCH_BOUNDS.minX; x < PITCH_BOUNDS.maxX; x += 500) {
+            ctx.fillRect(x, PITCH_BOUNDS.minY, 250, pitchHeight);
         }
 
         ctx.strokeStyle = "#00f5ff";
@@ -477,7 +476,7 @@
         ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
         ctx.lineWidth = 14;
         ctx.beginPath(); ctx.moveTo(centerX, PITCH_BOUNDS.minY); ctx.lineTo(centerX, PITCH_BOUNDS.maxY); ctx.stroke();
-        ctx.beginPath(); ctx.arc(centerX, centerY, 600, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(centerX, centerY, 700, 0, Math.PI * 2); ctx.stroke();
     }
 
     function drawOrb(p) {

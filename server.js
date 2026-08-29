@@ -58,7 +58,6 @@ function getRandomOffPitchPosition(countryCode) {
     };
 }
 
-// 🎯 تم تعديل الدالة لتوليد مواقع تصل للحدود تماماً مع خصم نصف القطر فقط
 function getRandomOnPitchPosition(radius) {
     const minX = PITCH_BOUNDS.minX + radius;
     const maxX = PITCH_BOUNDS.maxX - radius;
@@ -134,6 +133,7 @@ async function loadOfflinePlayersToStands() {
 async function updatePointsSafely(userId, delta) {
     if (!supabase || !userId || userId.startsWith('guest_') || userId.startsWith('bot_')) return;
     try {
+        // الاستعلام عن رصيد النقاط الحالي لتفادي التجاوز بالسالب
         const { data, error } = await supabase
             .from('profiles')
             .select('points_balance')
@@ -234,7 +234,6 @@ wss.on('connection', async (ws, req) => {
                 const current = activePlayers[socketId];
                 if (current && typeof data.x === 'number' && typeof data.y === 'number') {
                     const r = current.radius || 30;
-                    // 🎯 تقييد مركز الكرة ليصل حوافها إلى حدود الساحة بدقة
                     current.targetX = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, data.x));
                     current.targetY = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, data.y));
                 }
@@ -258,11 +257,25 @@ wss.on('connection', async (ws, req) => {
     });
 });
 
+// 🧹 تنظيف الاتصالات الميتة كل 30 ثانية (Heartbeat Monitor)
+const pingInterval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if (ws.isAlive === false) return ws.terminate();
+        ws.isAlive = false;
+        ws.ping();
+    });
+}, 30000);
+
+wss.on('close', () => {
+    clearInterval(pingInterval);
+});
+
 function checkCollisions() {
     const players = Object.values(activePlayers);
+    const count = players.length;
     
-    for (let i = 0; i < players.length; i++) {
-        for (let j = i + 1; j < players.length; j++) {
+    for (let i = 0; i < count; i++) {
+        for (let j = i + 1; j < count; j++) {
             const p1 = players[i];
             const p2 = players[j];
 
@@ -273,17 +286,12 @@ function checkCollisions() {
             const distance = Math.hypot(dx, dy) || 1;
 
             if (distance < (Math.max(p1.radius, p2.radius) * 0.45)) {
-                
                 if (p1.radius > p2.radius * 1.03) {
-                    if (p2.isBot && (p2.eatenPool || 0) < 2) {
-                        continue;
-                    }
+                    if (p2.isBot && (p2.eatenPool || 0) < 2) continue;
                     executeEat(p1, p2);
                 } 
                 else if (p2.radius > p1.radius * 1.03) {
-                    if (p1.isBot && (p1.eatenPool || 0) < 2) {
-                        continue;
-                    }
+                    if (p1.isBot && (p1.eatenPool || 0) < 2) continue;
                     executeEat(p2, p1);
                 }
             }
@@ -334,7 +342,7 @@ function executeEat(predator, victim) {
     }
 }
 
-// 🎯 تحديث المواقع وتطبيق تقييد الحدود الصارم لكل الإحداثيات
+// 🎯 حلقة التحديث الرئيسية (30 FPS)
 setInterval(() => {
     Object.values(activePlayers).forEach(p => {
         if (p.isBot) {
@@ -356,7 +364,6 @@ setInterval(() => {
                 p.y += dy * speedFactor;
             }
 
-            // 🛡️ التقييد المباشر لجسم الكرة لضمان ملامسة الحدود دون التجاوز
             const r = p.radius || 30;
             p.x = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, p.x));
             p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, p.y));
