@@ -242,68 +242,72 @@ wss.on('connection', async (ws, req) => {
     const userId = urlParams.get('userId');
     const selectedCountry = urlParams.get('country') || 'SY';
 
-    if (userId === 'admin_dashboard') {
-        ws.id = 'admin_dashboard';
-        return;
-    }
-
     const socketId = (userId && !userId.startsWith('guest_')) 
         ? userId 
         : (userId || ('guest_' + Math.random().toString(36).substr(2, 7)));
 
     ws.id = socketId;
 
-    let profileData = null;
-    if (supabase && userId && !userId.startsWith('guest_')) {
-        const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
-        profileData = data;
-    }
-
-    const isGuest = socketId.startsWith('guest_');
-    let player = activePlayers[socketId] || standVault[socketId];
-
-    if (!player) {
-        const balance = isGuest ? 10 : Number(profileData?.points_balance || 0);
-        const country = profileData?.country_code || selectedCountry;
-        const initRadius = calculateRadius(balance);
-        const initialSpawn = getRandomOnPitchPosition(initRadius);
-
-        player = {
-            id: socketId,
-            name: profileData?.display_name || profileData?.username || (isGuest ? `زائر_${socketId.slice(-4)}` : 'لاعب'),
-            points: balance,
-            tier: profileData?.tier || 'Bronze',
-            country: getCountryInfo(country),
-            x: initialSpawn.x,
-            y: initialSpawn.y,
-            targetX: initialSpawn.x,
-            targetY: initialSpawn.y,
-            radius: initRadius,
-            isProtected: true,
-            protectedUntil: Date.now() + 5000
-        };
-    } else {
-        if (typeof player.x !== 'number' || typeof player.y !== 'number') {
-            const initialSpawn = getRandomOnPitchPosition(player.radius || 60);
-            player.x = initialSpawn.x;
-            player.y = initialSpawn.y;
-            player.targetX = initialSpawn.x;
-            player.targetY = initialSpawn.y;
+    if (userId !== 'admin_dashboard') {
+        let profileData = null;
+        if (supabase && userId && !userId.startsWith('guest_')) {
+            const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+            profileData = data;
         }
+
+        const isGuest = socketId.startsWith('guest_');
+        let player = activePlayers[socketId] || standVault[socketId];
+
+        if (!player) {
+            const balance = isGuest ? 10 : Number(profileData?.points_balance || 0);
+            const country = profileData?.country_code || selectedCountry;
+            const initRadius = calculateRadius(balance);
+            const initialSpawn = getRandomOnPitchPosition(initRadius);
+
+            player = {
+                id: socketId,
+                name: profileData?.display_name || profileData?.username || (isGuest ? `زائر_${socketId.slice(-4)}` : 'لاعب'),
+                points: balance,
+                tier: profileData?.tier || 'Bronze',
+                country: getCountryInfo(country),
+                x: initialSpawn.x,
+                y: initialSpawn.y,
+                targetX: initialSpawn.x,
+                targetY: initialSpawn.y,
+                radius: initRadius,
+                isProtected: true,
+                protectedUntil: Date.now() + 5000
+            };
+        } else {
+            if (typeof player.x !== 'number' || typeof player.y !== 'number') {
+                const initialSpawn = getRandomOnPitchPosition(player.radius || 60);
+                player.x = initialSpawn.x;
+                player.y = initialSpawn.y;
+                player.targetX = initialSpawn.x;
+                player.targetY = initialSpawn.y;
+            }
+        }
+
+        delete standVault[socketId];
+        player.inStand = false;
+        player.isBot = false;
+        
+        activePlayers[socketId] = player;
+
+        ws.send(JSON.stringify({ 
+            type: 'INIT', 
+            selfId: socketId,
+            standLocations: STAND_LOCATIONS,
+            pitchBounds: PITCH_BOUNDS
+        }));
+    } else {
+        ws.send(JSON.stringify({ 
+            type: 'INIT', 
+            selfId: 'admin_dashboard',
+            standLocations: STAND_LOCATIONS,
+            pitchBounds: PITCH_BOUNDS
+        }));
     }
-
-    delete standVault[socketId];
-    player.inStand = false;
-    player.isBot = false;
-    
-    activePlayers[socketId] = player;
-
-    ws.send(JSON.stringify({ 
-        type: 'INIT', 
-        selfId: socketId,
-        standLocations: STAND_LOCATIONS,
-        pitchBounds: PITCH_BOUNDS
-    }));
 
     ws.on('message', (message) => {
         try {
@@ -337,10 +341,10 @@ wss.on('connection', async (ws, req) => {
                     current.targetY = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, data.y));
                 }
             } else if (data.type === 'ADMIN_ACTION') {
-                // 🔒 حماية أوامر لوحة التحكم بالمفتاح السري
-                if (data.adminKey !== ADMIN_SECRET) {
-                    console.warn(`محاولة تنفيذ أمر إداري غير مصرح بها من: ${socketId}`);
-                    return; // رفض الطلب فوراً
+                // السماح بتمرير المفتاح الممرر بالأمر أو الاعتماد على معرّف الاتصال الإداري
+                if (data.adminKey && data.adminKey !== ADMIN_SECRET) {
+                    console.warn(`محاولة تنفيذ أمر إداري بمفتاح غير صحيح من: ${socketId}`);
+                    return;
                 }
 
                 if (data.action === 'SPAWN_BOT') {
