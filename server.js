@@ -51,9 +51,13 @@ function calculateRadius(points) {
     return Math.min(1200, Math.max(60, Math.round(calculatedRadius)));
 }
 
-function calculateSpeed(radius, isBot = false) {
-    const baseSpeed = Math.max(0.008, 0.025 - (radius / 8000));
-    return isBot ? baseSpeed * 0.45 : baseSpeed;
+// 🐌 ضبط سرعة البوتات لتكون ثابته وانسيابية
+function getBotMoveSpeed(radius) {
+    return Math.max(4, 12 - (radius / 100));
+}
+
+function getPlayerSpeedFactor(radius) {
+    return Math.max(0.008, 0.025 - (radius / 8000));
 }
 
 function getCountryInfo(code) {
@@ -80,7 +84,6 @@ function getRandomOffPitchPosition(countryCode) {
     };
 }
 
-// 🎯 التأكد الجذري من توليد الكرات داخل الحدود مع مراعاة نصف القطر
 function getRandomOnPitchPosition(radius) {
     const r = radius || 60;
     const minX = PITCH_BOUNDS.minX + r;
@@ -112,8 +115,8 @@ function spawnBot(botId) {
         country: getCountryInfo(randomCountry),
         x: pos.x,
         y: pos.y,
-        targetX: pos.x,
-        targetY: pos.y,
+        angle: Math.random() * Math.PI * 2, // 🧭 زاوية اتجاه البوت الابتدائية
+        changeTimer: Math.floor(Math.random() * 60) + 30, // مؤقت الانحراف
         radius: radius
     };
 }
@@ -263,7 +266,6 @@ wss.on('connection', async (ws, req) => {
             } else if (data.type === 'TARGET') {
                 const current = activePlayers[socketId];
                 if (current && typeof data.x === 'number' && typeof data.y === 'number') {
-                    // 🔒 تقييد الهدف داخل أبعاد الملعب تماماً
                     const r = current.radius || 60;
                     current.targetX = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, data.x));
                     current.targetY = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, data.y));
@@ -408,29 +410,57 @@ function executeEat(predator, victim) {
 // 🎯 حلقة التحديث الرئيسية (30 FPS)
 setInterval(() => {
     Object.values(activePlayers).forEach(p => {
+        const r = p.radius || 60;
+
         if (p.isBot) {
-            if (Math.random() < 0.008 || Math.hypot(p.targetX - p.x, p.targetY - p.y) < 150) {
-                const target = getRandomOnPitchPosition(p.radius);
-                p.targetX = target.x;
-                p.targetY = target.y;
-            }
-        }
-
-        if (typeof p.targetX === 'number' && typeof p.targetY === 'number') {
-            const dx = p.targetX - p.x;
-            const dy = p.targetY - p.y;
-            const dist = Math.hypot(dx, dy);
-
-            if (dist > 5) {
-                const speedFactor = calculateSpeed(p.radius, p.isBot);
-                p.x += dx * speedFactor;
-                p.y += dy * speedFactor;
+            // 🤖 معالجة حركة البوت بشكل انسيابي وطبيعي
+            p.changeTimer--;
+            if (p.changeTimer <= 0) {
+                // تدوير الزاوية قليلاً وبشكل عشوائي
+                p.angle += (Math.random() - 0.5) * 0.8; 
+                p.changeTimer = Math.floor(Math.random() * 40) + 20;
             }
 
-            // 🛑 حظر مطلق وصارم: إجبار الإحداثيات المحدثة على عدم التجاوز خارج حدود المضمار مطلقاً
-            const r = p.radius || 60;
-            p.x = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, p.x));
-            p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, p.y));
+            const botSpeed = getBotMoveSpeed(r);
+            p.x += Math.cos(p.angle) * botSpeed;
+            p.y += Math.sin(p.angle) * botSpeed;
+
+            // 🛡️ انحراف طبيعي عند الوصول للحدود
+            if (p.x <= PITCH_BOUNDS.minX + r) {
+                p.x = PITCH_BOUNDS.minX + r;
+                p.angle = Math.PI - p.angle;
+            } else if (p.x >= PITCH_BOUNDS.maxX - r) {
+                p.x = PITCH_BOUNDS.maxX - r;
+                p.angle = Math.PI - p.angle;
+            }
+
+            if (p.y <= PITCH_BOUNDS.minY + r) {
+                p.y = PITCH_BOUNDS.minY + r;
+                p.angle = -p.angle;
+            } else if (p.y >= PITCH_BOUNDS.maxY - r) {
+                p.y = PITCH_BOUNDS.maxY - r;
+                p.angle = -p.angle;
+            }
+
+            p.targetX = p.x;
+            p.targetY = p.y;
+        } else {
+            // 🕹️ حركة اللاعب الحقيقي بناء على الماوس / اللمس
+            if (typeof p.targetX === 'number' && typeof p.targetY === 'number') {
+                const dx = p.targetX - p.x;
+                const dy = p.targetY - p.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist > 5) {
+                    const speedFactor = getPlayerSpeedFactor(r);
+                    p.x += dx * speedFactor;
+                    p.y += dy * speedFactor;
+                }
+
+                // حظر خروج اللاعب خارج الحدود
+                p.x = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, p.x));
+                p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, p.y));
+            }
         }
     });
 
