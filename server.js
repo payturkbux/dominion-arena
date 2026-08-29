@@ -10,11 +10,6 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static('public'));
 
-// مسار فحص الحالة الحية لمظلة Render (Health Check)
-app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/public/index.html');
-});
-
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
@@ -195,12 +190,11 @@ async function loadOfflinePlayersToStands() {
         if (users && !error) {
             users.forEach(u => {
                 const country = u.country_code || 'SY';
-                const balance = Number(u.points_balance || 0);
 
                 standVault[u.id] = {
                     id: u.id,
                     name: u.display_name || u.username || 'لاعب',
-                    points: balance,
+                    points: 0, // تصفير طاقة الكرة في المدرجات
                     tier: u.tier || 'Bronze',
                     inStand: true,
                     country: getCountryInfo(country)
@@ -212,15 +206,9 @@ async function loadOfflinePlayersToStands() {
     }
 }
 
-async function updatePointsSafely(userId, delta) {
+// دالة تحديث رصيد المحفظة المالية في Supabase فوراً
+async function updateDatabaseBalanceSafely(userId, delta) {
     if (!supabase || !userId || userId.startsWith('guest_') || userId.startsWith('bot_')) return;
-    
-    if (activePlayers[userId]) {
-        activePlayers[userId].points = Math.max(0, (activePlayers[userId].points || 0) + delta);
-        activePlayers[userId].radius = calculateRadius(activePlayers[userId].points);
-    } else if (standVault[userId]) {
-        standVault[userId].points = Math.max(0, (standVault[userId].points || 0) + delta);
-    }
 
     try {
         const { error } = await supabase.rpc('change_user_points', {
@@ -264,28 +252,30 @@ wss.on('connection', async (ws, req) => {
     let player = activePlayers[socketId] || standVault[socketId];
 
     if (!player) {
-        const balance = profileData?.points_balance !== undefined ? Number(profileData.points_balance) : 1;
         const country = profileData?.country_code || selectedCountry;
-        const initRadius = calculateRadius(balance);
-        const initialSpawn = getRandomOnPitchPosition(initRadius);
+        const initialSpawn = getRandomOnPitchPosition(60);
 
         player = {
             id: socketId,
             name: profileData?.display_name || profileData?.username || (isGuest ? `زائر_${socketId.slice(-4)}` : 'لاعب'),
-            points: balance,
+            points: 0, // تنزل الكرة الميدان بـ 0 طاقة ويتم شحنها من المحفظة
             tier: profileData?.tier || 'Bronze',
             country: getCountryInfo(country),
             x: initialSpawn.x,
             y: initialSpawn.y,
             targetX: initialSpawn.x,
             targetY: initialSpawn.y,
-            radius: initRadius,
+            radius: calculateRadius(0),
             isProtected: true,
             protectedUntil: Date.now() + 5000
         };
     } else {
+        // عند دخول الكرة من جديد تُصفر طاقتها في الميدان
+        player.points = 0;
+        player.radius = calculateRadius(0);
+
         if (typeof player.x !== 'number' || typeof player.y !== 'number') {
-            const initialSpawn = getRandomOnPitchPosition(player.radius || 60);
+            const initialSpawn = getRandomOnPitchPosition(60);
             player.x = initialSpawn.x;
             player.y = initialSpawn.y;
             player.targetX = initialSpawn.x;
@@ -302,7 +292,6 @@ wss.on('connection', async (ws, req) => {
     ws.send(JSON.stringify({ 
         type: 'INIT', 
         selfId: socketId,
-        walletBalance: player.points,
         standLocations: STAND_LOCATIONS,
         pitchBounds: PITCH_BOUNDS
     }));
@@ -313,15 +302,26 @@ wss.on('connection', async (ws, req) => {
 
             if (data.type === 'TRANSFER_TO_WALLET') {
                 const player = activePlayers[socketId];
-                if (player) {
+                if (player && (player.points || 0) > 0) {
                     const amount = Math.max(1, parseInt(data.amount) || 1);
-                    player.points = Math.max(0, (player.points || 0) - amount);
+                    const actualTransfer = Math.min(player.points, amount);
+
+                    // 1. خصم الطاقة من الكرة
+                    player.points -= actualTransfer;
                     player.radius = calculateRadius(player.points);
+
+                    // 2. زيادة رصيد المحفظة في Supabase
+                    updateDatabaseBalanceSafely(socketId, actualTransfer);
                 }
             } else if (data.type === 'CHARGE_ORB') {
                 const player = activePlayers[socketId];
                 if (player) {
                     const amount = Math.max(1, parseInt(data.amount) || 1);
+
+                    // 1. خصم القيمة من رصيد المحفظة في Supabase
+                    updateDatabaseBalanceSafely(socketId, -amount);
+
+                    // 2. إضافة الطاقة إلى الكرة
                     player.points = (player.points || 0) + amount;
                     player.radius = calculateRadius(player.points);
                 }
@@ -330,8 +330,8 @@ wss.on('connection', async (ws, req) => {
                     let p = standVault[socketId];
                     delete standVault[socketId];
 
-                    p.points = 1;
-                    p.radius = calculateRadius(p.points);
+                    p.points = 0; // دخول الساحة بطاقة 0
+                    p.radius = calculateRadius(0);
 
                     const spawnPos = getRandomOnPitchPosition(p.radius || 60);
                     
@@ -464,19 +464,13 @@ function executeEat(predator, victim) {
     if (isGuestPlayer(predator)) {
         incentivePool += delta; 
         checkIncentivePool();   
-    } else if (!predator.isBot) {
-        updatePointsSafely(predator.id, delta);
     } else {
         predator.points = (predator.points || 0) + delta;
         predator.radius = calculateRadius(predator.points);
     }
 
-    if (!victim.isBot && !isGuestPlayer(victim)) {
-        updatePointsSafely(victim.id, -delta);
-    } else {
-        victim.points = Math.max(0, (victim.points || 0) - delta);
-        victim.radius = calculateRadius(victim.points);
-    }
+    victim.points = Math.max(0, (victim.points || 0) - delta);
+    victim.radius = calculateRadius(victim.points);
 
     if (victim.points <= 0) {
         delete activePlayers[victim.id];

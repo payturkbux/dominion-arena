@@ -209,55 +209,88 @@
     }
 
     async function transferEnergyToWallet() {
-        const me = activePlayers[currentUserId];
-        if (!me || (me.points || 0) <= 0) {
-            showNotification("لا يوجد طاقة في الكرة لسحبها!", "error");
+    const me = activePlayers[currentUserId];
+    if (!me || (me.points || 0) <= 0) {
+        showNotification("لا يوجد طاقة في الكرة لسحبها!", "error");
+        return;
+    }
+
+    const energyToTransfer = 10;
+
+    // 1. تحديث مؤقت في الواجهة
+    me.points -= energyToTransfer;
+    userWalletBalance += energyToTransfer;
+    me.radius = calculateRadius(me.points);
+    updateWalletDisplay();
+
+    // 2. تحديث قاعدة بيانات Supabase بشكل مباشر
+    if (supabaseClient && !currentUserId.startsWith('guest_')) {
+        const { error } = await supabaseClient
+            .from('profiles')
+            .update({ points_balance: userWalletBalance })
+            .eq('id', currentUserId);
+
+        if (error) {
+            console.error("خطأ Supabase:", error);
+            // التراجع عن العملية محلياً
+            me.points += energyToTransfer;
+            userWalletBalance -= energyToTransfer;
+            me.radius = calculateRadius(me.points);
+            updateWalletDisplay();
+            showNotification("فشل إيداع الطاقة في المحفظة!", "error");
             return;
         }
-
-        const energyToTransfer = 1;
-        me.points -= energyToTransfer;
-        userWalletBalance += energyToTransfer;
-        me.radius = calculateRadius(me.points);
-
-        updateWalletDisplay();
-        showNotification(`تم تحويل ⚡ ${energyToTransfer} PWR إلى المحفظة!`, "success");
-
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'TRANSFER_TO_WALLET', amount: energyToTransfer }));
-        }
-
-        if (supabaseClient && !currentUserId.startsWith('guest_')) {
-            await supabaseClient.rpc('change_user_points', { user_id: currentUserId, delta: energyToTransfer });
-        }
     }
+
+    // 3. إبلاغ خادم التداول اللحظي (WebSocket)
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'TRANSFER_TO_WALLET', amount: energyToTransfer }));
+    }
+
+    showNotification(`تم تحويل ⚡ ${energyToTransfer} PWR إلى المحفظة!`, "success");
+}
 
     async function chargeOrbFromWallet(amount = 1) {
-        if (userWalletBalance <= 0) {
-            showNotification("رصيد المحفظة 0! يرجى شحن حسابك", "error");
+    if (userWalletBalance < amount) {
+        showNotification("رصيد المحفظة غير كافٍ!", "error");
+        return;
+    }
+
+    const me = activePlayers[currentUserId];
+    if (!me) return;
+
+    // 1. تحديث مؤقت في الواجهة
+    userWalletBalance -= amount;
+    me.points = (me.points || 0) + amount;
+    me.radius = calculateRadius(me.points);
+    updateWalletDisplay();
+
+    // 2. تحديث قاعدة بيانات Supabase بشكل مباشر وتأكيد العملية
+    if (supabaseClient && !currentUserId.startsWith('guest_')) {
+        const { error } = await supabaseClient
+            .from('profiles')
+            .update({ points_balance: userWalletBalance })
+            .eq('id', currentUserId);
+
+        if (error) {
+            console.error("خطأ Supabase:", error);
+            // التراجع عن العملية محلياً في حال الفشل لحماية أموال المستخدم
+            userWalletBalance += amount;
+            me.points -= amount;
+            me.radius = calculateRadius(me.points);
+            updateWalletDisplay();
+            showNotification("فشل خصم الرصيد من المحفظة في قاعدة البيانات!", "error");
             return;
         }
-
-        let chargeAmount = 1;
-        userWalletBalance -= chargeAmount;
-        
-        const me = activePlayers[currentUserId];
-        if (me) {
-            me.points = (me.points || 0) + chargeAmount;
-            me.radius = calculateRadius(me.points);
-        }
-
-        updateWalletDisplay();
-        showNotification(`تم شحن الكرة بـ ⚡ ${chargeAmount} PWR!`, "success");
-
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'CHARGE_ORB', amount: chargeAmount }));
-        }
-
-        if (supabaseClient && !currentUserId.startsWith('guest_')) {
-            await supabaseClient.rpc('change_user_points', { user_id: currentUserId, delta: -chargeAmount });
-        }
     }
+
+    // 3. إبلاغ خادم التداول اللحظي (WebSocket)
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'CHARGE_ORB', amount: amount }));
+    }
+
+    showNotification(`تم شحن الكرة بـ ⚡ ${amount} PWR!`, "success");
+}
 
     let sidebarOpen = true;
     function toggleSidebar() {
@@ -348,12 +381,25 @@
                         Object.keys(data.activePlayers || {}).forEach(id => {
                             const pData = data.activePlayers[id];
                             if (!activePlayers[id]) {
-                                activePlayers[id] = { ...pData, x: pData.x, y: pData.y, targetX: pData.x, targetY: pData.y, radius: calculateRadius(pData.points) };
+                                // تصفير نقاط الكرة للاعب الحالي فور دخوله الساحة لتجنب أخذ رصيد المحفظة كاملاً
+                                const initialPoints = (id === currentUserId) ? 0 : (pData.points || 0);
+                                activePlayers[id] = { 
+                                    ...pData, 
+                                    x: pData.x, 
+                                    y: pData.y, 
+                                    targetX: pData.x, 
+                                    targetY: pData.y, 
+                                    points: initialPoints, 
+                                    radius: calculateRadius(initialPoints) 
+                                };
                             } else {
                                 activePlayers[id].targetX = pData.x;
                                 activePlayers[id].targetY = pData.y;
-                                activePlayers[id].points = pData.points;
-                                activePlayers[id].radius = calculateRadius(pData.points);
+                                // منع السيرفر من فرض نقاط المحفظة على اللاعب المحلي أثناء اللعب
+                                if (id !== currentUserId) {
+                                    activePlayers[id].points = pData.points;
+                                    activePlayers[id].radius = calculateRadius(pData.points);
+                                }
                                 activePlayers[id].isProtected = pData.isProtected;
                                 activePlayers[id].protectedUntil = pData.protectedUntil;
                                 activePlayers[id].name = pData.name;
