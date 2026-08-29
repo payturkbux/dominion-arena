@@ -21,7 +21,7 @@ if (SUPABASE_URL && SUPABASE_KEY) {
 // حدود المضمار الداخلي
 const PITCH_BOUNDS = { minX: 500, maxX: 6700, minY: 1900, maxY: 5500 };
 
-// مواقع المدرجات (خارج حدود المضمار)
+// مواقع المدرجات
 const STAND_LOCATIONS = {
     "SY": { x: 1200, y: 1100 },
     "SA": { x: 2400, y: 1100 },
@@ -33,14 +33,20 @@ const STAND_LOCATIONS = {
 let activePlayers = {}; 
 let standVault = {};    
 
+const BOT_NAMES = ['Ghost_Hunter', 'Shadow_King', 'Vortex_99', 'Neon_Blade', 'Zeus_BOY', 'Alpha_Wolf', 'Storm_Rider', 'Titan_X', 'Apex_Predator'];
+const COUNTRIES = ['SY', 'SA', 'TR', 'EG', 'AE'];
+
+// 📏 معادلة حساب الحجم بنطاق يتراوح بين 30px إلى 300px لضمان التفاوت البصري
 function calculateRadius(points) {
     const val = Math.max(0, Number(points) || 0);
-    const calculatedRadius = 30 + Math.pow(val / 10, 0.55);
-    return Math.min(600, Math.max(30, calculatedRadius));
+    // منحنى نمو متناسق يعطي تفاوتاً ملحوظاً بين الكرات
+    const calculatedRadius = 30 + (Math.pow(val, 0.55) * 8);
+    return Math.min(300, Math.max(30, Math.round(calculatedRadius)));
 }
 
 function calculateSpeed(radius) {
-    return Math.max(0.02, 0.22 - (radius / 1200));
+    // السرعة تعتمد على الحجم: الكرات الأكبر أبطأ حركةً
+    return Math.max(0.03, 0.22 - (radius / 1500));
 }
 
 function getCountryFlag(code) {
@@ -48,7 +54,6 @@ function getCountryFlag(code) {
     return flags[code] || "🚩";
 }
 
-// دالة لتوليد إحداثيات مضمونة خارج المضمار (للمدرجات)
 function getRandomOffPitchPosition(countryCode) {
     const stand = STAND_LOCATIONS[countryCode] || STAND_LOCATIONS['SY'];
     return {
@@ -57,13 +62,43 @@ function getRandomOffPitchPosition(countryCode) {
     };
 }
 
-// 🎯 دالة جديدة لتوليد موقع رندم عشوائي بالكامل داخل حدود الملعب عند إعادة الدخول
 function getRandomOnPitchPosition(radius) {
     const margin = radius + 50;
     return {
         x: Math.floor(Math.random() * (PITCH_BOUNDS.maxX - PITCH_BOUNDS.minX - 2 * margin)) + PITCH_BOUNDS.minX + margin,
         y: Math.floor(Math.random() * (PITCH_BOUNDS.maxY - PITCH_BOUNDS.minY - 2 * margin)) + PITCH_BOUNDS.minY + margin
     };
+}
+
+// 🤖 دالة إنشاء البوتات بأحجام وهمية متفاوتة عند التصفير والبداية
+function spawnBot(botId) {
+    const randomName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
+    const randomCountry = COUNTRIES[Math.floor(Math.random() * COUNTRIES.length)];
+    
+    // تفاوت الأحجام عند التصفير: إعطاء البوت رصيداً عشوائياً بين 0 و 15 نقطة
+    const randomInitialPoints = Math.floor(Math.random() * 16);
+    const radius = calculateRadius(randomInitialPoints);
+    const pos = getRandomOnPitchPosition(radius);
+
+    activePlayers[botId] = {
+        id: botId,
+        isBot: true,
+        name: randomName,
+        points: randomInitialPoints, // رصيد الحجم الافتراضي
+        eatenPool: 0,                // حصيلة الابتلاع الداخلي
+        tier: 'Gold',
+        country: { code: randomCountry, flag: getCountryFlag(randomCountry) },
+        x: pos.x,
+        y: pos.y,
+        targetX: pos.x,
+        targetY: pos.y,
+        radius: radius
+    };
+}
+
+// تهيئة 6 بوتات بأحجام متفاوتة داخل الساحة
+for (let i = 1; i <= 6; i++) {
+    spawnBot(`bot_${i}`);
 }
 
 async function loadOfflinePlayersToStands() {
@@ -92,7 +127,6 @@ async function loadOfflinePlayersToStands() {
                     country: { code: country, flag: getCountryFlag(country) }
                 };
             });
-            console.log(` تم تحميل ${Object.keys(standVault).length} لاعب للمدرجات.`);
         }
     } catch (err) {
         console.error("خطأ جلب بيانات Supabase:", err);
@@ -100,7 +134,7 @@ async function loadOfflinePlayersToStands() {
 }
 
 async function updatePointsSafely(userId, delta) {
-    if (!supabase || !userId || userId.startsWith('guest_')) return;
+    if (!supabase || !userId || userId.startsWith('guest_') || userId.startsWith('bot_')) return;
     try {
         const { data, error } = await supabase
             .from('profiles')
@@ -129,33 +163,6 @@ async function updatePointsSafely(userId, delta) {
         console.error("فشل التحديث الآمن لقاعدة البيانات:", e);
     }
 }
-
-setInterval(async () => {
-    if (!supabase) return;
-    const activeIds = Object.keys(activePlayers).filter(id => !id.startsWith('guest_'));
-    if (activeIds.length === 0) return;
-
-    try {
-        const { data, error } = await supabase
-            .from('profiles')
-            .select('id, points_balance')
-            .in('id', activeIds.slice(0, 500));
-
-        if (data && !error) {
-            data.forEach(user => {
-                if (activePlayers[user.id]) {
-                    const realBalance = Number(user.points_balance || 0);
-                    if (activePlayers[user.id].points !== realBalance) {
-                        activePlayers[user.id].points = realBalance;
-                        activePlayers[user.id].radius = calculateRadius(realBalance);
-                    }
-                }
-            });
-        }
-    } catch (err) {
-        console.error("خطأ المزامنة الحية للأرصدة:", err);
-    }
-}, 5000);
 
 loadOfflinePlayersToStands();
 
@@ -215,7 +222,6 @@ wss.on('connection', async (ws, req) => {
                     let p = standVault[socketId];
                     delete standVault[socketId];
                     
-                    // 🎯 توليد مكان عشوائي تماماً داخل الملعب عند كل إعادة دخول
                     const spawnPos = getRandomOnPitchPosition(p.radius || 30);
                     
                     p.inStand = false;
@@ -253,6 +259,7 @@ wss.on('connection', async (ws, req) => {
     });
 });
 
+// 🎯 شرط الابتلاع الحاد القائم على فرق الحجم
 function checkCollisions() {
     const players = Object.values(activePlayers);
     
@@ -267,59 +274,82 @@ function checkCollisions() {
             const dy = p2.y - p1.y;
             const distance = Math.hypot(dx, dy) || 1;
 
-            if (p1.radius > p2.radius * 1.01 && distance < (p1.radius * 0.45)) {
-                executeEat(p1, p2);
-            } 
-            else if (p2.radius > p1.radius * 1.01 && distance < (p2.radius * 0.45)) {
-                executeEat(p2, p1);
+            // يجب أن تتقاطع الكرتان بمسافة كافية لعملية الابتلاع
+            if (distance < (Math.max(p1.radius, p2.radius) * 0.45)) {
+                
+                // شرط الحجم: الكبيرة تبتلع الأصغر بـ 3% على الأقل
+                if (p1.radius > p2.radius * 1.03) {
+                    if (p2.isBot && (p2.eatenPool || 0) < 2) {
+                        continue; // البوت لم يستوفِ شرط الـ 2 نقطة بعد
+                    }
+                    executeEat(p1, p2);
+                } 
+                else if (p2.radius > p1.radius * 1.03) {
+                    if (p1.isBot && (p1.eatenPool || 0) < 2) {
+                        continue; // البوت لم يستوفِ شرط الـ 2 نقطة بعد
+                    }
+                    executeEat(p2, p1);
+                }
             }
         }
     }
 }
 
 function executeEat(predator, victim) {
-    predator.points += 1;
-    predator.radius = calculateRadius(predator.points);
-    victim.points = Math.max(0, victim.points - 1);
-    victim.radius = calculateRadius(victim.points);
+    if (predator.isBot) {
+        predator.eatenPool = (predator.eatenPool || 0) + 1;
+        predator.points += 2; // تكبير البوت أسرع ليصبح خطراً واضحاً
+        predator.radius = calculateRadius(predator.points);
+    } else {
+        predator.points += 1;
+        predator.radius = calculateRadius(predator.points);
+        updatePointsSafely(predator.id, 1);
+    }
 
-    updatePointsSafely(predator.id, 1);
-    updatePointsSafely(victim.id, -1);
+    if (victim.isBot) {
+        const botId = victim.id;
+        delete activePlayers[botId];
+        // إعادة التصفير وبناء البوت بحجم جديد متفاوت بعد 3 ثوانٍ
+        setTimeout(() => spawnBot(botId), 3000); 
+    } else {
+        victim.points = Math.max(0, victim.points - 1);
+        victim.radius = calculateRadius(victim.points);
+        updatePointsSafely(victim.id, -1);
 
-    delete activePlayers[victim.id];
-    victim.inStand = true;
+        delete activePlayers[victim.id];
+        victim.inStand = true;
 
-    const offPitchPos = getRandomOffPitchPosition(victim.country?.code);
-    victim.x = offPitchPos.x;
-    victim.y = offPitchPos.y;
-    victim.targetX = offPitchPos.x;
-    victim.targetY = offPitchPos.y;
+        const offPitchPos = getRandomOffPitchPosition(victim.country?.code);
+        victim.x = offPitchPos.x;
+        victim.y = offPitchPos.y;
+        victim.targetX = offPitchPos.x;
+        victim.targetY = offPitchPos.y;
 
-    standVault[victim.id] = victim;
+        standVault[victim.id] = victim;
 
-    wss.clients.forEach(client => {
-        if (client.id === victim.id && client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({
-                type: 'EATEN',
-                eatenBy: predator.name,
-                remainingPoints: victim.points
-            }));
-        }
-    });
+        wss.clients.forEach(client => {
+            if (client.id === victim.id && client.readyState === WebSocket.OPEN) {
+                client.send(JSON.stringify({
+                    type: 'EATEN',
+                    eatenBy: predator.name,
+                    remainingPoints: victim.points
+                }));
+            }
+        });
+    }
 }
 
-const pingInterval = setInterval(() => {
-    wss.clients.forEach((ws) => {
-        if (ws.isAlive === false) return ws.terminate();
-        ws.isAlive = false;
-        ws.ping();
-    });
-}, 30000);
-
-wss.on('close', () => clearInterval(pingInterval));
-
+// 🤖 الحركة الذكية للبوتات وتحديث الموضعة
 setInterval(() => {
     Object.values(activePlayers).forEach(p => {
+        if (p.isBot) {
+            if (Math.random() < 0.04 || Math.hypot(p.targetX - p.x, p.targetY - p.y) < 60) {
+                const target = getRandomOnPitchPosition(p.radius);
+                p.targetX = target.x;
+                p.targetY = target.y;
+            }
+        }
+
         if (typeof p.targetX === 'number' && typeof p.targetY === 'number') {
             const speed = calculateSpeed(p.radius);
             p.x += (p.targetX - p.x) * speed;
@@ -343,4 +373,4 @@ setInterval(() => {
 }, 1000 / 30);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Agario Server with Random On-Pitch Spawn running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Agario Server with Varied Radius Dynamic Bots running on port ${PORT}`));
