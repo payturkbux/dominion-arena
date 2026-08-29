@@ -277,11 +277,12 @@ wss.on('connection', async (ws, req) => {
             protectedUntil: Date.now() + 5000
         };
     } else {
-        player.points = 0;
-        player.radius = calculateRadius(0);
+        // الحفاظ على نقاط وموقع اللاعب عند إعادة الاتصال أو تحديث الصفحة
+        player.points = player.points || 0;
+        player.radius = calculateRadius(player.points);
 
         if (typeof player.x !== 'number' || typeof player.y !== 'number') {
-            const initialSpawn = getRandomOnPitchPosition(60);
+            const initialSpawn = getRandomOnPitchPosition(player.radius);
             player.x = initialSpawn.x;
             player.y = initialSpawn.y;
             player.targetX = initialSpawn.x;
