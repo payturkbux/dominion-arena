@@ -212,13 +212,14 @@
     window.addEventListener('resize', resize);
     resize();
 
-    const PITCH_BOUNDS = { minX: 0, maxX: 14000, minY: 0, maxY: 8000 };
+    // مضاعفة حجم الملعب 10 أضعاف
+    const PITCH_BOUNDS = { minX: 0, maxX: 140000, minY: 0, maxY: 80000 };
     const centerX = (PITCH_BOUNDS.maxX + PITCH_BOUNDS.minX) / 2;
     const centerY = (PITCH_BOUNDS.maxY + PITCH_BOUNDS.minY) / 2;
 
-    let camera = { x: centerX, y: centerY, zoom: 0.15, targetZoom: 0.15 };
-    const MIN_ZOOM = 0.05;
-    const MAX_ZOOM = 2.50;
+    let camera = { x: centerX, y: centerY, zoom: 0.015, targetZoom: 0.015 };
+    const MIN_ZOOM = 0.005;
+    const MAX_ZOOM = 1.20;
 
     let activePlayers = {};
     let standLocations = {};
@@ -232,7 +233,7 @@
     function calculateRadius(points) {
         const val = Math.max(0, Number(points) || 0);
         const calculatedRadius = 60 + (Math.pow(val, 0.55) * 16);
-        return Math.min(1200, Math.max(60, Math.round(calculatedRadius)));
+        return Math.min(3000, Math.max(60, Math.round(calculatedRadius)));
     }
 
     const monumentImages = {};
@@ -285,7 +286,6 @@
                                     targetY: pData.y 
                                 };
                             } else {
-                                // تحديث الإحداثيات المستهدفة للتنعيم وتفادي القفز المفاجئ
                                 activePlayers[id].targetX = pData.x;
                                 activePlayers[id].targetY = pData.y;
                                 activePlayers[id].points = pData.points;
@@ -335,7 +335,7 @@
     function updatePhysics() {
         for (let i = eatEffects.length - 1; i >= 0; i--) {
             const fx = eatEffects[i];
-            fx.radius += 4;
+            fx.radius += 8;
             fx.alpha -= 0.04;
             if (fx.alpha <= 0 || fx.radius >= fx.maxRadius) {
                 eatEffects.splice(i, 1);
@@ -500,15 +500,15 @@
         }).join('');
     }
 
+    // رسم المدرجات المربعة بالكامل المحيطة بكامل الملعب
     function drawStands() {
         if (!standLocations) return;
 
         Object.keys(standLocations).forEach(code => {
             const stand = standLocations[code];
-            const w = stand.width || 2500;
-            const h = stand.height || 400;
-            const x = stand.x - w / 2;
-            const y = stand.y - h / 2;
+            const size = stand.size || 20000;
+            const x = stand.x - size / 2;
+            const y = stand.y - size / 2;
 
             const landmark = countryLandmarks[code];
             const img = monumentImages[code];
@@ -518,32 +518,33 @@
             ctx.save();
             if (img && img.complete && img.naturalWidth !== 0) {
                 ctx.globalAlpha = 0.35;
-                ctx.drawImage(img, x, y, w, h);
+                ctx.drawImage(img, x, y, size, size);
                 ctx.globalAlpha = 1.0;
             } else {
-                ctx.fillStyle = "rgba(15, 23, 42, 0.8)";
-                ctx.fillRect(x, y, w, h);
+                ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+                ctx.fillRect(x, y, size, size);
             }
 
+            // إطار مربع متوهج للمدرج
             ctx.strokeStyle = themeColor;
-            ctx.lineWidth = 12;
-            ctx.shadowBlur = 25;
+            ctx.lineWidth = 120;
+            ctx.shadowBlur = 100;
             ctx.shadowColor = themeColor;
-            ctx.strokeRect(x, y, w, h);
+            ctx.strokeRect(x, y, size, size);
             ctx.shadowBlur = 0;
 
             ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
-            ctx.fillRect(x, y, w, h);
+            ctx.fillRect(x, y, size, size);
 
             ctx.fillStyle = "#ffffff";
-            ctx.font = "bold 80px 'Tajawal'";
+            ctx.font = "bold 600px 'Tajawal'";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText(`${landmark?.flag || ''} مدرج ${landmark?.name || code}`, stand.x, stand.y - 30);
+            ctx.fillText(`${landmark?.flag || ''} مدرج ${landmark?.name || code}`, stand.x, stand.y - 400);
 
-            ctx.font = "bold 65px 'Sora'";
+            ctx.font = "bold 500px 'Sora'";
             ctx.fillStyle = "#00ffff";
-            ctx.fillText(`إجمالي الكتلة: ${totalBalance} $`, stand.x, stand.y + 55);
+            ctx.fillText(`إجمالي الكتلة: ${totalBalance} $`, stand.x, stand.y + 400);
 
             ctx.restore();
         });
@@ -551,13 +552,13 @@
 
     function drawStadiumPitch() {
         ctx.fillStyle = "#0c1220";
-        ctx.fillRect(-6000, -6000, 26000, 20000);
+        ctx.fillRect(-60000, -60000, 260000, 200000);
 
-        let lightGrad = ctx.createRadialGradient(centerX, centerY, 1000, centerX, centerY, 12000);
+        let lightGrad = ctx.createRadialGradient(centerX, centerY, 10000, centerX, centerY, 120000);
         lightGrad.addColorStop(0, "rgba(0, 245, 255, 0.12)");
         lightGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
         ctx.fillStyle = lightGrad;
-        ctx.fillRect(-6000, -6000, 26000, 20000);
+        ctx.fillRect(-60000, -60000, 260000, 200000);
 
         let pitchWidth = PITCH_BOUNDS.maxX - PITCH_BOUNDS.minX;
         let pitchHeight = PITCH_BOUNDS.maxY - PITCH_BOUNDS.minY;
@@ -569,22 +570,25 @@
         ctx.fillStyle = turfGrad;
         ctx.fillRect(PITCH_BOUNDS.minX, PITCH_BOUNDS.minY, pitchWidth, pitchHeight);
 
+        // تخطيط نجيل الميدان
         ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
-        for (let x = PITCH_BOUNDS.minX; x < PITCH_BOUNDS.maxX; x += 700) {
-            ctx.fillRect(x, PITCH_BOUNDS.minY, 350, pitchHeight);
+        for (let x = PITCH_BOUNDS.minX; x < PITCH_BOUNDS.maxX; x += 7000) {
+            ctx.fillRect(x, PITCH_BOUNDS.minY, 3500, pitchHeight);
         }
 
+        // إطار الملعب المضيء
         ctx.strokeStyle = "#00f5ff";
-        ctx.lineWidth = 25;
-        ctx.shadowBlur = 50;
+        ctx.lineWidth = 200;
+        ctx.shadowBlur = 150;
         ctx.shadowColor = "#00f5ff";
         ctx.strokeRect(PITCH_BOUNDS.minX, PITCH_BOUNDS.minY, pitchWidth, pitchHeight);
         ctx.shadowBlur = 0;
 
+        // منتصف الملعب والدائرة المركزية
         ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
-        ctx.lineWidth = 18;
+        ctx.lineWidth = 120;
         ctx.beginPath(); ctx.moveTo(centerX, PITCH_BOUNDS.minY); ctx.lineTo(centerX, PITCH_BOUNDS.maxY); ctx.stroke();
-        ctx.beginPath(); ctx.arc(centerX, centerY, 1000, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(centerX, centerY, 10000, 0, Math.PI * 2); ctx.stroke();
     }
 
     function drawEatEffects() {
@@ -593,9 +597,9 @@
             ctx.beginPath();
             ctx.arc(fx.x, fx.y, fx.radius, 0, Math.PI * 2);
             ctx.strokeStyle = fx.color;
-            ctx.lineWidth = 6;
+            ctx.lineWidth = 12;
             ctx.globalAlpha = fx.alpha;
-            ctx.shadowBlur = 15;
+            ctx.shadowBlur = 30;
             ctx.shadowColor = fx.color;
             ctx.stroke();
             ctx.restore();
@@ -616,10 +620,10 @@
 
         if (isProtected) {
             ctx.beginPath();
-            ctx.arc(0, 0, radius + 14, 0, Math.PI * 2);
+            ctx.arc(0, 0, radius + 25, 0, Math.PI * 2);
             ctx.strokeStyle = "rgba(255, 215, 0, 0.9)";
-            ctx.lineWidth = 8;
-            ctx.shadowBlur = 20;
+            ctx.lineWidth = 20;
+            ctx.shadowBlur = 40;
             ctx.shadowColor = "#ffd700";
             ctx.stroke();
             ctx.shadowBlur = 0;
@@ -639,7 +643,7 @@
         ctx.fillStyle = glassGrad;
         ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
 
-        ctx.lineWidth = Math.max(4, radius * 0.05);
+        ctx.lineWidth = Math.max(8, radius * 0.05);
         ctx.strokeStyle = (p.id === currentUserId) ? "#ffd700" : themeColor;
         ctx.stroke();
 
@@ -647,7 +651,7 @@
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         
-        const fontSize = Math.max(14, radius * 0.3);
+        const fontSize = Math.max(28, radius * 0.3);
         ctx.font = `bold ${fontSize}px 'Tajawal'`;
         
         const flag = p.country?.flag || '';
@@ -665,7 +669,7 @@
     function render() {
         updatePhysics();
 
-        // تنعيم حركة الكرات محلول بشكل سلس جداً لمنع القفز
+        // التنعيم
         Object.values(activePlayers).forEach(p => {
             if (p.targetX !== undefined && p.targetY !== undefined) {
                 p.x += (p.targetX - p.x) * 0.25;

@@ -18,17 +18,19 @@ if (SUPABASE_URL && SUPABASE_KEY) {
     supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
-const PITCH_BOUNDS = { minX: 0, maxX: 14000, minY: 0, maxY: 8000 };
+// حدود الملعب بعد مضاعفتها 10 أضعاف
+const PITCH_BOUNDS = { minX: 0, maxX: 140000, minY: 0, maxY: 80000 };
 
 let incentivePool = 0; 
 let botCounter = 0;
 
+// المدرجات المربعة تماماً والمحيطة بكامل الميدان
 const STAND_LOCATIONS = {
-    "SY": { x: 3500,  y: -500,  width: 2500, height: 400, edge: 'TOP' },
-    "TR": { x: 10500, y: -500,  width: 2500, height: 400, edge: 'TOP' },
-    "SA": { x: 3500,  y: 8500,  width: 2500, height: 400, edge: 'BOTTOM' },
-    "EG": { x: 10500, y: 8500,  width: 2500, height: 400, edge: 'BOTTOM' },
-    "AE": { x: 14500, y: 4000,  width: 400,  height: 2500, edge: 'RIGHT' }
+    "SY": { x: 35000,  y: -10000, size: 20000, edge: 'TOP' },
+    "TR": { x: 105000, y: -10000, size: 20000, edge: 'TOP' },
+    "SA": { x: 35000,  y: 90000,  size: 20000, edge: 'BOTTOM' },
+    "EG": { x: 105000, y: 90000,  size: 20000, edge: 'BOTTOM' },
+    "AE": { x: 150000, y: 40000,  size: 20000, edge: 'RIGHT' }
 };
 
 const COUNTRY_DATA = {
@@ -48,15 +50,15 @@ const COUNTRIES = ['SY', 'SA', 'TR', 'EG', 'AE'];
 function calculateRadius(points) {
     const val = Math.max(0, Number(points) || 0);
     const calculatedRadius = 60 + (Math.pow(val, 0.55) * 16);
-    return Math.min(1200, Math.max(60, Math.round(calculatedRadius)));
+    return Math.min(3000, Math.max(60, Math.round(calculatedRadius)));
 }
 
 function getBotMoveSpeed(radius) {
-    return Math.max(4, 12 - (radius / 100));
+    return Math.max(15, 45 - (radius / 100));
 }
 
 function getPlayerSpeedFactor(radius) {
-    return Math.max(0.04, 0.12 - (radius / 3000));
+    return Math.max(0.04, 0.12 - (radius / 10000));
 }
 
 function getCountryInfo(code) {
@@ -204,7 +206,6 @@ wss.on('connection', async (ws, req) => {
     const userId = urlParams.get('userId');
     const selectedCountry = urlParams.get('country') || 'SY';
 
-    // استخدام المعرف المقدم أو إنشاء معرّف محدد ثابت
     const socketId = (userId && !userId.startsWith('guest_')) 
         ? userId 
         : (userId || ('guest_' + Math.random().toString(36).substr(2, 7)));
@@ -218,8 +219,6 @@ wss.on('connection', async (ws, req) => {
     }
 
     const isGuest = socketId.startsWith('guest_');
-    
-    // إصلاح جوهري: الحفاظ على موقع ومستجدات الكائن إن كان موجوداً مسبقاً لمنع القفز
     let player = activePlayers[socketId] || standVault[socketId];
 
     if (!player) {
@@ -243,7 +242,6 @@ wss.on('connection', async (ws, req) => {
             protectedUntil: Date.now() + 5000
         };
     } else {
-        // إذا كان يمتلك موضعاً سابقاً، استخدامه دون القفز لمكان جديد
         if (typeof player.x !== 'number' || typeof player.y !== 'number') {
             const initialSpawn = getRandomOnPitchPosition(player.radius || 60);
             player.x = initialSpawn.x;
@@ -392,7 +390,6 @@ function executeEat(predator, victim) {
         victim.radius = calculateRadius(victim.points);
     }
 
-    // لا تُحذف الكرة إلا إذا وصلت نقاطها لـ 0 تماماً
     if (victim.points <= 0) {
         delete activePlayers[victim.id];
         
@@ -441,7 +438,7 @@ setInterval(() => {
                 const dist = Math.hypot(dx, dy);
 
                 if ((other.points || 0) > (p.points || 0)) {
-                    const safeDistance = p.radius + other.radius + 500;
+                    const safeDistance = p.radius + other.radius + 1500;
                     if (dist < safeDistance && dist > 0) {
                         dangerFound = true;
                         const force = (safeDistance - dist) / safeDistance;
@@ -450,7 +447,7 @@ setInterval(() => {
                     }
                 } 
                 else if ((p.points || 0) > (other.points || 0) && !other.isProtected) {
-                    const huntDistance = 800;
+                    const huntDistance = 2500;
                     if (dist < huntDistance && dist > 0) {
                         targetFound = true;
                         chaseX += (dx / dist);
