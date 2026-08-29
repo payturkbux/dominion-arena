@@ -18,7 +18,6 @@ if (SUPABASE_URL && SUPABASE_KEY) {
     supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
-// حدود الملعب والمدرجات
 const PITCH_BOUNDS = { minX: 500, maxX: 6700, minY: 1900, maxY: 5500 };
 const STAND_LOCATIONS = {
     "SY": { x: 1200, y: 1100 },
@@ -31,7 +30,6 @@ const STAND_LOCATIONS = {
 let activePlayers = {}; 
 let standVault = {};    
 
-// دالة حساب نصف القطر بناءً على الرصيد
 function calculateRadius(points) {
     const base = 35;
     const val = Math.max(0, Number(points) || 0);
@@ -39,12 +37,15 @@ function calculateRadius(points) {
     return Math.min(120, Math.max(base, base + dynamicSize));
 }
 
-// دالة حساب السرعة الحركية (الكرة الأكبر أبطأ نسبياً)
 function calculateSpeed(radius) {
     return Math.max(0.05, 0.25 - (radius / 500));
 }
 
-// جلب الجمهور الخامل إلى المدرجات من Supabase
+function getCountryFlag(code) {
+    const flags = { "SY": "🇸🇾", "SA": "🇸🇦", "TR": "🇹🇷", "EG": "🇪🇬", "AE": "🇦🇪" };
+    return flags[code] || "🚩";
+}
+
 async function loadOfflinePlayersToStands() {
     if (!supabase) return;
     try {
@@ -71,21 +72,28 @@ async function loadOfflinePlayersToStands() {
                     country: { code: country, flag: getCountryFlag(country) }
                 };
             });
-            console.log(` تم تحميل ${Object.keys(standVault).length} لاعب خامل للمدرجات.`);
+            console.log(` تم تحميل ${Object.keys(standVault).length} لاعب للمدرجات.`);
         }
     } catch (err) {
         console.error("خطأ جلب بيانات Supabase:", err);
     }
 }
 
-function getCountryFlag(code) {
-    const flags = { "SY": "🇸🇾", "SA": "🇸🇦", "TR": "🇹🇷", "EG": "🇪🇬", "AE": "🇦🇪" };
-    return flags[code] || "🚩";
+// دالة لتحديث الرصيد في Supabase مباشرة عند الابتلاع
+async function syncUserPointsToDB(userId, newPoints) {
+    if (!supabase || !userId || userId.startsWith('guest_')) return;
+    try {
+        await supabase
+            .from('profiles')
+            .update({ points_balance: newPoints })
+            .eq('id', userId);
+    } catch (e) {
+        console.error("فشل تحديث قاعدة البيانات:", e);
+    }
 }
 
 loadOfflinePlayersToStands();
 
-// كشف الاتصالات الميتة (Heartbeat)
 function heartbeat() {
     this.isAlive = true;
 }
@@ -108,10 +116,8 @@ wss.on('connection', async (ws, req) => {
         profileData = data;
     }
 
-    // تجهيز كائن اللاعب
     const balance = Number(profileData?.points_balance || 0);
     const country = profileData?.country_code || 'SY';
-    const playerRadius = calculateRadius(balance);
 
     let player = standVault[socketId] || {
         id: socketId,
@@ -121,10 +127,9 @@ wss.on('connection', async (ws, req) => {
         country: { code: country, flag: getCountryFlag(country) },
         x: 3600,
         y: 3700,
-        radius: playerRadius
+        radius: calculateRadius(balance)
     };
 
-    // إزالة اللاعب من المدرج وإضافته للاعبين النشطين في الميدان
     delete standVault[socketId];
     player.inStand = false;
     player.targetX = player.x;
@@ -132,17 +137,27 @@ wss.on('connection', async (ws, req) => {
 
     activePlayers[socketId] = player;
 
-    // إرسال معرف الجلسة المعتمد
     ws.send(JSON.stringify({ type: 'INIT', selfId: socketId }));
 
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
 
-            if (data.type === 'TARGET') {
+            // عند رغبة اللاعب المبتلع بالعودة إلى الميدان
+            if (data.type === 'REENTER_ARENA') {
+                if (standVault[socketId]) {
+                    let p = standVault[socketId];
+                    delete standVault[socketId];
+                    p.inStand = false;
+                    p.x = 3600 + (Math.random() * 400 - 200);
+                    p.y = 3700 + (Math.random() * 400 - 200);
+                    p.targetX = p.x;
+                    p.targetY = p.y;
+                    activePlayers[socketId] = p;
+                }
+            } else if (data.type === 'TARGET') {
                 const current = activePlayers[socketId];
                 if (current && typeof data.x === 'number' && typeof data.y === 'number') {
-                    // تطبيق الحدود وتأمين البيانات المدخلة
                     const r = current.radius || 35;
                     current.targetX = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, data.x));
                     current.targetY = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, data.y));
@@ -158,7 +173,6 @@ wss.on('connection', async (ws, req) => {
             const disconnectedPlayer = activePlayers[socketId];
             delete activePlayers[socketId];
 
-            // إعادة اللاعب إلى المدرج
             disconnectedPlayer.inStand = true;
             const stand = STAND_LOCATIONS[disconnectedPlayer.country?.code] || STAND_LOCATIONS['SY'];
             disconnectedPlayer.x = stand.x + (Math.random() * 200 - 100);
@@ -168,7 +182,60 @@ wss.on('connection', async (ws, req) => {
     });
 });
 
-// فحص وإغلاق الاتصالات الميتة كل 30 ثانية
+// خوارزمية الابتلاع والمواجهة في الميدان
+function checkCollisions() {
+    const players = Object.values(activePlayers);
+    
+    for (let i = 0; i < players.length; i++) {
+        for (let j = 0; j < players.length; j++) {
+            if (i === j) continue;
+
+            const p1 = players[i];
+            const p2 = players[j];
+
+            if (!p1 || !p2) continue;
+
+            const dx = p1.x - p2.x;
+            const dy = p1.y - p2.y;
+            const distance = Math.hypot(dx, dy);
+
+            // الشرط: أن تكون الكرة 1 أكبر حسائباً بـ 1.15 من الكرة 2 والمسافة بين المركزين أقرب من نصف قطر الكبيرة
+            if (p1.radius > p2.radius * 1.15 && distance < p1.radius) {
+                
+                // 1. زيادة الكبيرة بنقطة واحدة
+                p1.points += 1;
+                p1.radius = calculateRadius(p1.points);
+                syncUserPointsToDB(p1.id, p1.points);
+
+                // 2. خفض نقطة من الصغيرة
+                p2.points = Math.max(0, p2.points - 1);
+                p2.radius = calculateRadius(p2.points);
+                syncUserPointsToDB(p2.id, p2.points);
+
+                // 3. طرد الكرة الصغيرة من الميدان إلى المدرج
+                delete activePlayers[p2.id];
+                p2.inStand = true;
+
+                const stand = STAND_LOCATIONS[p2.country?.code] || STAND_LOCATIONS['SY'];
+                p2.x = stand.x + (Math.random() * 200 - 100);
+                p2.y = stand.y + (Math.random() * 100 - 50);
+                standVault[p2.id] = p2;
+
+                // إعلام العميل الصغير بإخراجه وإمكانية الضغط للعودة
+                wss.clients.forEach(client => {
+                    if (client.id === p2.id && client.readyState === WebSocket.OPEN) {
+                        client.send(JSON.stringify({
+                            type: 'EATEN',
+                            eatenBy: p1.name,
+                            remainingPoints: p2.points
+                        }));
+                    }
+                });
+            }
+        }
+    }
+}
+
 const pingInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) return ws.terminate();
@@ -179,9 +246,9 @@ const pingInterval = setInterval(() => {
 
 wss.on('close', () => clearInterval(pingInterval));
 
-// حلقة الفيزياء والبث الفعال السريع (30 FPS)
+// حلقة الفيزياء، الابتلاع والتزامن (30 FPS)
 setInterval(() => {
-    // 1. تحديث الفيزياء والمواقع محلياً على السيرفر
+    // 1. التحديث الفيزيائي للمواقع
     Object.values(activePlayers).forEach(p => {
         if (typeof p.targetX === 'number' && typeof p.targetY === 'number') {
             const speed = calculateSpeed(p.radius);
@@ -190,14 +257,16 @@ setInterval(() => {
         }
     });
 
-    // 2. تجميع البيانات المحدثة فقط
+    // 2. فحص ومعالجة عمليات الابتلاع والتصادمات
+    checkCollisions();
+
+    // 3. بث الحالة العامة المحدثة
     const payload = JSON.stringify({
         type: 'SYNC',
         activePlayers,
         standVault
     });
 
-    // 3. البث المباشر لجميع المتصلين
     wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
             client.send(payload);
@@ -206,4 +275,4 @@ setInterval(() => {
 }, 1000 / 30);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Authoritative Game Server running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Agario Arena Server with Eating Logic running on port ${PORT}`));

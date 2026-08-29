@@ -21,12 +21,24 @@
 
     <div id="toastContainer" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
+    <!-- شاشة إعادة النزول عند الابتلاع -->
+    <div id="respawnOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+        <div class="glass-hud p-8 rounded-3xl w-full max-w-md border border-red-500/50 text-center shadow-2xl space-y-5 animate-bounce-short">
+            <div class="text-6xl">💥</div>
+            <h2 class="text-2xl font-black text-red-400">تم ابتلاع كرتك!</h2>
+            <p id="respawnText" class="text-sm text-gray-300 leading-relaxed">لقد خسرت نقطة واحدة وتم إخراجك إلى المدرجات.</p>
+            <button onclick="requestReentry()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold py-3.5 rounded-2xl text-sm shadow-xl active:scale-95 transition">
+                ⚡ إعادة النزول للميدان الآن
+            </button>
+        </div>
+    </div>
+
     <header class="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-6 glass-hud px-8 py-3 rounded-2xl shadow-2xl border border-cyan-500/30">
         <div class="flex items-center gap-3">
             <span class="text-3xl">⚔️</span>
             <div>
                 <div id="hudStatusTitle" class="text-[10px] uppercase text-cyan-400 font-bold tracking-widest">ميدان التفاعل الحي والربط المتعدد</div>
-                <div id="hudActionTip" class="text-xs font-bold text-emerald-400">حرّك الماوس أو المس الشاشة لتحريك الكاميرا والكرة</div>
+                <div id="hudActionTip" class="text-xs font-bold text-emerald-400">حرّك الماوس أو المس الشاشة لتوجيه كرة الميدان</div>
             </div>
         </div>
     </header>
@@ -80,7 +92,7 @@
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3YmdmZHRlb2Nld2l0ZHpyeXNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4NTE2MTMsImV4cCI6MjEwMzQyNzYxM30.C7hId5uF-p_7ibGSs0P7a2yxpOD-Zu4ON-lu7Pivn6k";
 
     let supabaseClient = null;
-    let realtimeChannel = null;
+    let socket = null;
 
     try {
         if (typeof supabase !== 'undefined' && SUPABASE_URL && SUPABASE_ANON_KEY) {
@@ -125,10 +137,9 @@
     const MAX_ZOOM = 1.20;
 
     let activePlayers = {};
+    let standVault = {};
     let currentUserProfile = null;
     let currentUserId = localStorage.getItem('dominion_user_id') || `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
-
-    let targetPos = { x: 3600, y: 3700 };
 
     function calculateRadius(points) {
         const base = 35;
@@ -139,11 +150,11 @@
 
     const monumentImages = {};
     const countryLandmarks = {
-        "SY": { name: "سوريا", flag: "🇸🇾", standX: 1200, color: "#00f5ff", url: "https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=400&q=80" },
-        "SA": { name: "السعودية", flag: "🇸🇦", standX: 2400, color: "#3bff17", url: "https://images.unsplash.com/photo-1586724237569-f3d0c1dee8c6?auto=format&fit=crop&w=400&q=80" },
-        "TR": { name: "تركيا", flag: "🇹🇷", standX: 3600, color: "#ff4b89", url: "https://images.unsplash.com/photo-1541432901042-2d8bd64b4a9b?auto=format&fit=crop&w=400&q=80" },
-        "EG": { name: "مصر", flag: "🇪🇬", standX: 4800, color: "#ffb1c3", url: "https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=400&q=80" },
-        "AE": { name: "الإمارات", flag: "🇦🇪", standX: 6000, color: "#ffd9e0", url: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=400&q=80" }
+        "SY": { name: "سوريا", flag: "🇸🇾", color: "#00f5ff", url: "https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=400&q=80" },
+        "SA": { name: "السعودية", flag: "🇸🇦", color: "#3bff17", url: "https://images.unsplash.com/photo-1586724237569-f3d0c1dee8c6?auto=format&fit=crop&w=400&q=80" },
+        "TR": { name: "تركيا", flag: "🇹🇷", color: "#ff4b89", url: "https://images.unsplash.com/photo-1541432901042-2d8bd64b4a9b?auto=format&fit=crop&w=400&q=80" },
+        "EG": { name: "مصر", flag: "🇪🇬", color: "#ffb1c3", url: "https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=400&q=80" },
+        "AE": { name: "الإمارات", flag: "🇦🇪", color: "#ffd9e0", url: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=400&q=80" }
     };
 
     Object.keys(countryLandmarks).forEach(code => {
@@ -152,90 +163,53 @@
         monumentImages[code] = img;
     });
 
-    function initMyPlayer() {
-        const balanceVal = Number(currentUserProfile?.points_balance || 0);
-        const nameVal = currentUserProfile?.display_name || currentUserProfile?.username || (currentUserId.startsWith('guest_') ? `زائر_${currentUserId.slice(-4)}` : 'لاعب');
-
-        if (!activePlayers[currentUserId]) {
-            activePlayers[currentUserId] = {
-                id: currentUserId,
-                x: 3600,
-                y: 3700,
-                radius: calculateRadius(balanceVal),
-                points: balanceVal,
-                name: nameVal,
-                tier: currentUserProfile?.tier || 'Bronze',
-                country: { code: "SY", flag: "🇸🇾" }
-            };
-        } else {
-            activePlayers[currentUserId].points = balanceVal;
-            activePlayers[currentUserId].name = nameVal;
-            activePlayers[currentUserId].radius = calculateRadius(balanceVal);
+    // إعداد وتوصيل الـ WebSocket بالسيرفر
+    function setupWebSocket() {
+        if (socket) {
+            socket.close();
         }
-        updateLeaderboard();
-    }
 
-    function setupSupabaseRealtime() {
-        if (!supabaseClient) return;
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}?userId=${currentUserId}`;
+        
+        socket = new WebSocket(wsUrl);
 
-        if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
+        socket.onopen = () => {
+            console.log("تم الاتصال بسيرفر الألعاب بنجاح.");
+        };
 
-        realtimeChannel = supabaseClient.channel('arena_room', {
-            config: { broadcast: { self: false } }
-        });
+        socket.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
 
-        realtimeChannel
-            .on('broadcast', { event: 'player_move' }, ({ payload }) => {
-                if (payload && payload.id) {
-                    activePlayers[payload.id] = {
-                        ...activePlayers[payload.id],
-                        ...payload,
-                        radius: calculateRadius(payload.points)
-                    };
+                if (data.type === 'INIT') {
+                    currentUserId = data.selfId;
+                } else if (data.type === 'SYNC') {
+                    activePlayers = data.activePlayers || {};
+                    standVault = data.standVault || {};
                     updateLeaderboard();
-                }
-            })
-            .subscribe((status) => {
-                if (status === 'SUBSCRIBED') {
-                    broadcastMyPosition();
-                }
-            });
-    }
-
-    function broadcastMyPosition() {
-        if (realtimeChannel && activePlayers[currentUserId]) {
-            realtimeChannel.send({
-                type: 'broadcast',
-                event: 'player_move',
-                payload: activePlayers[currentUserId]
-            });
-        }
-    }
-
-    async function loadRealUsersFromDB() {
-        if (!supabaseClient) return;
-        try {
-            const { data, error } = await supabaseClient.from('profiles').select('*');
-            if (!error && data) {
-                data.forEach((u) => {
-                    if (u.id !== currentUserId && !activePlayers[u.id]) {
-                        const balanceVal = Number(u.points_balance || 0);
-                        activePlayers[u.id] = {
-                            id: u.id,
-                            name: u.display_name || u.username || "لاعب",
-                            points: balanceVal,
-                            tier: u.tier || "Bronze",
-                            country: { code: "SY", flag: "🇸🇾" },
-                            radius: calculateRadius(balanceVal),
-                            x: 1200 + (Math.random() * 4000),
-                            y: 2200 + (Math.random() * 2500)
-                        };
+                } else if (data.type === 'EATEN') {
+                    const overlay = document.getElementById('respawnOverlay');
+                    const respawnText = document.getElementById('respawnText');
+                    if (respawnText) {
+                        respawnText.innerText = `ابتلعتك كرة اللاعب (${data.eatenBy})! رصيدك المتبقي: ${data.remainingPoints} $`;
                     }
-                });
-                updateLeaderboard();
+                    if (overlay) overlay.classList.remove('hidden');
+                }
+            } catch (e) {
+                console.error("خطأ معالجة بيانات WebSocket:", e);
             }
-        } catch (err) {
-            console.error("DB Load Error:", err);
+        };
+
+        socket.onclose = () => {
+            setTimeout(setupWebSocket, 2000);
+        };
+    }
+
+    function requestReentry() {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'REENTER_ARENA' }));
+            document.getElementById('respawnOverlay').classList.add('hidden');
         }
     }
 
@@ -262,7 +236,6 @@
             if (!error && data) {
                 currentUserProfile = data;
                 updateAuthUI();
-                initMyPlayer();
             }
         } catch (e) {
             console.error("Fetch profile error:", e);
@@ -313,7 +286,7 @@
                 await fetchUserProfile(currentUserId);
                 showNotification("تم تسجيل الدخول بنجاح!", "success");
                 closeLoginModal();
-                setupSupabaseRealtime();
+                setupWebSocket();
             }
         } catch (err) {
             errorEl.innerText = "حدث خطأ أثناء الدخول";
@@ -332,8 +305,7 @@
         currentUserProfile = null;
         showNotification("تم تسجيل الخروج", "success");
         updateAuthUI();
-        initMyPlayer();
-        setupSupabaseRealtime();
+        setupWebSocket();
     }
 
     window.addEventListener('wheel', (e) => {
@@ -350,20 +322,25 @@
 
     function handlePointerMove(clientX, clientY) {
         const worldPos = getWorldCoordinates(clientX, clientY);
-        const radius = activePlayers[currentUserId]?.radius || 40;
 
-        targetPos.x = Math.max(PITCH_BOUNDS.minX + radius, Math.min(PITCH_BOUNDS.maxX - radius, worldPos.x));
-        targetPos.y = Math.max(PITCH_BOUNDS.minY + radius, Math.min(PITCH_BOUNDS.maxY - radius, worldPos.y));
+        // إرسال الهدف المباشر للسيرفر
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+                type: 'TARGET',
+                x: worldPos.x,
+                y: worldPos.y
+            }));
+        }
     }
 
     window.addEventListener('mousemove', (e) => {
-        if (e.target.closest('header, aside, button, #loginModal, #toastContainer')) return;
+        if (e.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay')) return;
         handlePointerMove(e.clientX, e.clientY);
     });
 
     window.addEventListener('touchmove', (e) => {
         if (e.touches && e.touches.length > 0) {
-            if (e.touches[0].target.closest('header, aside, button, #loginModal, #toastContainer')) return;
+            if (e.touches[0].target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay')) return;
             handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
         }
     }, { passive: true });
@@ -372,7 +349,7 @@
         const listEl = document.getElementById('leaderboardList');
         if (!listEl) return;
         
-        let allEntities = Object.values(activePlayers);
+        let allEntities = [...Object.values(activePlayers), ...Object.values(standVault)];
         allEntities.sort((a, b) => (Number(b.points) || 0) - (Number(a.points) || 0));
         const top5 = allEntities.slice(0, 5);
 
@@ -479,25 +456,13 @@
         ctx.restore();
     }
 
-    let lastBroadcastTime = 0;
     function render() {
-        const me = activePlayers[currentUserId];
+        const me = activePlayers[currentUserId] || standVault[currentUserId];
         
         if (me) {
-            // تحريك الكرة بسلاسة ونعومة نحو الهدف
-            me.x += (targetPos.x - me.x) * 0.1;
-            me.y += (targetPos.y - me.y) * 0.1;
-
-            // الكاميرا تتبع كرة اللاعب دائماً في المنتصف بدقة
+            // تتبع الكاميرا لكرة اللاعب بسلاسة
             camera.x += (me.x - camera.x) * 0.1;
             camera.y += (me.y - camera.y) * 0.1;
-
-            // بث موقع الكرة الحالي إلى الأجهزة الأخرى كل 50 ملي ثانية
-            const now = Date.now();
-            if (now - lastBroadcastTime > 50) {
-                broadcastMyPosition();
-                lastBroadcastTime = now;
-            }
         }
 
         camera.zoom += (camera.targetZoom - camera.zoom) * 0.1;
@@ -509,17 +474,18 @@
         ctx.translate(-camera.x, -camera.y);
 
         drawStadiumPitch();
+
+        // رسم كرات الميدان والمدرجات
+        Object.values(standVault).forEach(p => drawOrb(p));
         Object.values(activePlayers).forEach(p => drawOrb(p));
 
         ctx.restore();
         requestAnimationFrame(render);
     }
 
-    initMyPlayer();
     if (!currentUserId.startsWith('guest_')) fetchUserProfile(currentUserId);
     updateAuthUI();
-    setupSupabaseRealtime();
-    loadRealUsersFromDB();
+    setupWebSocket();
     render();
 </script>
 </body>
