@@ -58,7 +58,7 @@ function getBotMoveSpeed(radius) {
 }
 
 function getPlayerSpeedFactor(radius) {
-    return Math.max(0.04, 0.12 - (radius / 6000));
+    return Math.max(0.04, 0.12 - (radius / 3000));
 }
 
 function getCountryInfo(code) {
