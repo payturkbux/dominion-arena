@@ -204,6 +204,7 @@
     let activePlayers = {};
     let standVault = {};
     let standLocations = {};
+    let standTotals = {}; // 📊 كائن استقبال أرصدة المدرجات الإجمالية من السيرفر
     let localTargetPos = { x: centerX, y: centerY };
 
     let currentUserProfile = null;
@@ -326,7 +327,12 @@
 
                         standVault = data.standVault || {};
                         if (data.standLocations) standLocations = data.standLocations;
+                        if (data.standTotals) standTotals = data.standTotals; // 📥 استلام أرصدة المدرجات
+
                         updateLeaderboard();
+                    } else if (data.type === 'EATEN') {
+                        document.getElementById('respawnOverlay').classList.remove('hidden');
+                        showNotification(`تم ابتلاعك بواسطة ${data.eatenBy}`, 'error');
                     }
                 } catch (e) {}
             };
@@ -596,6 +602,7 @@
             const landmark = countryLandmarks[code];
             const img = monumentImages[code];
             const themeColor = landmark?.color || "#00f5ff";
+            const totalBalance = Number(standTotals[code] || 0).toLocaleString();
 
             ctx.save();
             if (img && img.complete && img.naturalWidth !== 0) {
@@ -617,11 +624,17 @@
             ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
             ctx.fillRect(x, y, w, h);
 
+            // 🏛️ عرض اسم المدرج وتواجد المجموع المالي للدولة وتحفيزاتها
             ctx.fillStyle = "#ffffff";
-            ctx.font = "bold 90px 'Tajawal'";
+            ctx.font = "bold 80px 'Tajawal'";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText(`${landmark?.flag || ''} مدرج ${landmark?.name || code}`, stand.x, stand.y);
+            ctx.fillText(`${landmark?.flag || ''} مدرج ${landmark?.name || code}`, stand.x, stand.y - 30);
+
+            ctx.font = "bold 65px 'Sora'";
+            ctx.fillStyle = "#00ffff";
+            ctx.fillText(`إجمالي: ${totalBalance} $`, stand.x, stand.y + 55);
+
             ctx.restore();
         });
     }
