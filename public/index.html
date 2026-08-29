@@ -62,55 +62,6 @@
         </div>
     </div>
 
-    <!-- لوحة التحكم الإدارية -->
-    <div id="adminModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl p-4 overflow-y-auto">
-        <div class="glass-hud p-6 rounded-3xl w-full max-w-4xl border border-amber-500/50 shadow-2xl space-y-6">
-            <div class="flex justify-between items-center border-b border-amber-500/30 pb-4">
-                <div class="flex items-center gap-2">
-                    <span class="text-2xl">⚙️</span>
-                    <h2 class="text-xl font-black text-amber-400">لوحة التحكم بإشعاع ومستودعات الطاقة</h2>
-                </div>
-                <button onclick="toggleAdminDashboard()" class="text-gray-400 hover:text-white font-bold text-lg">✕</button>
-            </div>
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                <div class="bg-white/5 p-3 rounded-2xl border border-white/10">
-                    <div class="text-xs text-gray-400 font-bold">اللاعبون النشطون</div>
-                    <div id="admActivePlayers" class="text-xl font-black text-cyan-400 font-mono">0</div>
-                </div>
-                <div class="bg-white/5 p-3 rounded-2xl border border-white/10">
-                    <div class="text-xs text-gray-400 font-bold">عدد البوتات</div>
-                    <div id="admBotCount" class="text-xl font-black text-emerald-400 font-mono">0</div>
-                </div>
-                <div class="bg-white/5 p-3 rounded-2xl border border-white/10">
-                    <div class="text-xs text-gray-400 font-bold">طاقة الزوار الحالية</div>
-                    <div id="admGuestPoints" class="text-xl font-black text-amber-400 font-mono">0 PWR</div>
-                </div>
-                <div class="bg-white/5 p-3 rounded-2xl border border-white/10">
-                    <div class="text-xs text-gray-400 font-bold">المستودعات النشطة</div>
-                    <div id="admStandsCount" class="text-xl font-black text-purple-400 font-mono">20</div>
-                </div>
-            </div>
-            <div class="overflow-x-auto max-h-60 rounded-xl border border-white/10">
-                <table class="w-full text-xs text-right">
-                    <thead class="bg-amber-500/20 text-amber-300 font-bold">
-                        <tr>
-                            <th class="p-3">العلم / الرمز</th>
-                            <th class="p-3">اسم المستودع (الدولة)</th>
-                            <th class="p-3">الكود</th>
-                            <th class="p-3">إجمالي الطاقة المخزنة</th>
-                            <th class="p-3">اللاعبين بالساحة</th>
-                        </tr>
-                    </thead>
-                    <tbody id="admCountriesTable" class="divide-y divide-white/5"></tbody>
-                </table>
-            </div>
-            <div class="flex flex-wrap gap-3 pt-2">
-                <button onclick="adminTriggerAction('SPAWN_BOT')" class="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2.5 rounded-xl text-xs transition">🤖 إضافة بوت للساحة</button>
-                <button onclick="adminTriggerAction('CLEAR_BOTS')" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-2.5 rounded-xl text-xs transition">🗑️ طرد كل البوتات</button>
-            </div>
-        </div>
-    </div>
-
     <div id="toastContainer" class="fixed top-20 left-1/2 z-50 pointer-events-none flex flex-col items-center gap-2 w-full max-w-md px-4"></div>
 
     <div id="respawnOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
@@ -138,10 +89,6 @@
         <button id="authBtn" onclick="openLoginModal()" class="glass-hud px-3 py-2 rounded-xl flex items-center gap-1.5 border border-cyan-500/40 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition shadow-2xl">
             <span id="authBtnIcon">🔑</span>
             <span id="authBtnText" class="hidden sm:inline">تسجيل الدخول</span>
-        </button>
-        <button onclick="toggleAdminDashboard()" class="glass-hud px-3 py-2 rounded-xl flex items-center gap-1.5 border border-amber-500/40 text-xs font-bold text-amber-300 hover:bg-amber-500/20 active:scale-95 transition shadow-2xl">
-            <span>⚙️</span>
-            <span class="hidden sm:inline">لوحة التحكم</span>
         </button>
         <button id="logoutBtn" onclick="submitLogout()" class="hidden glass-hud px-2.5 py-2 rounded-xl flex items-center gap-1 border border-red-500/40 text-xs font-bold text-red-400 hover:bg-red-500/20 active:scale-95 transition shadow-2xl">
             <span>🚪</span>
@@ -240,7 +187,6 @@
         }).join('');
     }
 
-    // متغيرة رصيد المحفظة المحلية
     let userWalletBalance = 1000; 
 
     function updateWalletDisplay() {
@@ -262,9 +208,6 @@
         setTimeout(() => toast?.parentNode && toast.remove(), 2000);
     }
 
-    // ==========================================
-    // ⚡ وظائف التحويل الشحن والسحب من/إلى المحفظة
-    // ==========================================
     async function transferEnergyToWallet() {
         const me = activePlayers[currentUserId];
         if (!me || (me.points || 0) <= 0) {
@@ -272,7 +215,7 @@
             return;
         }
 
-        const energyToTransfer = 1; // سحب نقطة واحدة فقط
+        const energyToTransfer = 1;
         me.points -= energyToTransfer;
         userWalletBalance += energyToTransfer;
         me.radius = calculateRadius(me.points);
@@ -295,7 +238,7 @@
             return;
         }
 
-        let chargeAmount = 1; // شحن نقطة واحدة فقط
+        let chargeAmount = 1;
         userWalletBalance -= chargeAmount;
         
         const me = activePlayers[currentUserId];
@@ -329,18 +272,6 @@
             sidebar.classList.remove('translate-x-0', 'opacity-100');
             sidebar.classList.add('translate-x-[120%]', 'opacity-0', 'pointer-events-none');
             icon.innerText = '📊';
-        }
-    }
-
-    function toggleAdminDashboard() {
-        document.getElementById('adminModal').classList.toggle('hidden');
-    }
-
-    function adminTriggerAction(action) {
-        const adminKey = localStorage.getItem('dominion_admin_secret') || "MY_SECURE_ADMIN_KEY_123";
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'ADMIN_ACTION', action, adminKey }));
-            showNotification("تم إرسال الأمر الإداري!", "success");
         }
     }
 
@@ -440,7 +371,6 @@
                         }
 
                         updateLeaderboard();
-                        updateAdminUI(data);
                     } else if (data.type === 'EATEN') {
                         document.getElementById('respawnOverlay').classList.remove('hidden');
                         showNotification(`تم امتصاص طاقتك بواسطة ${data.eatenBy}`, 'error');
@@ -451,39 +381,6 @@
             socket.onclose = () => setTimeout(setupWebSocket, 3000);
         } catch(e) {
             console.error("خطأ الاتصال بالسيرفر:", e);
-        }
-    }
-
-    function updateAdminUI(syncData) {
-        const players = Object.values(syncData.activePlayers || {});
-        const bots = players.filter(p => p.isBot);
-        const guests = players.filter(p => String(p.id).startsWith('guest_'));
-        
-        const actEl = document.getElementById('admActivePlayers');
-        const botEl = document.getElementById('admBotCount');
-        const gstEl = document.getElementById('admGuestPoints');
-        const table = document.getElementById('admCountriesTable');
-
-        if (actEl) actEl.innerText = players.length;
-        if (botEl) botEl.innerText = bots.length;
-        if (gstEl) gstEl.innerText = guests.reduce((acc, g) => acc + (g.points || 0), 0) + ' PWR';
-
-        if (table && syncData.standTotals) {
-            table.innerHTML = Object.keys(syncData.standTotals).map(code => {
-                const info = countryLandmarks[code] || { name: code, flag: '🚩' };
-                const totalPts = Number(syncData.standTotals[code] || 0).toLocaleString();
-                const activeInCountry = players.filter(p => p.country?.code === code).length;
-
-                return `
-                    <tr class="hover:bg-white/5 transition">
-                        <td class="p-3 text-lg">${info.flag}</td>
-                        <td class="p-3 font-bold text-white">${info.name}</td>
-                        <td class="p-3 font-mono text-cyan-400">${code}</td>
-                        <td class="p-3 font-mono font-bold text-amber-400">⚡ ${totalPts} PWR</td>
-                        <td class="p-3 font-mono text-emerald-400">${activeInCountry}</td>
-                    </tr>
-                `;
-            }).join('');
         }
     }
 
@@ -569,7 +466,7 @@
     }
 
     window.addEventListener('wheel', (e) => {
-        if (e.target.closest('#toastContainer, #leaderboardSidebar, #loginModal, #countrySelectModal, #respawnOverlay, #adminModal, #walletHud')) return;
+        if (e.target.closest('#toastContainer, #leaderboardSidebar, #loginModal, #countrySelectModal, #respawnOverlay, #walletHud')) return;
         e.preventDefault();
         const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
         camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.targetZoom * zoomFactor));
@@ -609,7 +506,7 @@
     }
 
     window.addEventListener('mousemove', (e) => {
-        if (e.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal, #adminModal, #walletHud')) return;
+        if (e.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal, #walletHud')) return;
         sendTarget(e.clientX, e.clientY);
     });
 

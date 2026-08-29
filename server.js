@@ -24,7 +24,7 @@ if (SUPABASE_URL && SUPABASE_KEY) {
 const PITCH_BOUNDS = { minX: 0, maxX: 140000, minY: 0, maxY: 80000 };
 
 let incentivePool = 0; 
-let incentiveTarget = 10; // القيمة الحالية المطلوبة لإنشاء بوت
+let incentiveTarget = 10;
 let botCounter = 0;
 
 const STAND_LOCATIONS = {
@@ -249,66 +249,57 @@ wss.on('connection', async (ws, req) => {
 
     ws.id = socketId;
 
-    if (userId !== 'admin_dashboard') {
-        let profileData = null;
-        if (supabase && userId && !userId.startsWith('guest_')) {
-            const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
-            profileData = data;
-        }
-
-        const isGuest = socketId.startsWith('guest_');
-        let player = activePlayers[socketId] || standVault[socketId];
-
-        if (!player) {
-            const balance = 1; // تهبيط الكرة برصيد نقطة واحدة
-            const country = profileData?.country_code || selectedCountry;
-            const initRadius = calculateRadius(balance);
-            const initialSpawn = getRandomOnPitchPosition(initRadius);
-
-            player = {
-                id: socketId,
-                name: profileData?.display_name || profileData?.username || (isGuest ? `زائر_${socketId.slice(-4)}` : 'لاعب'),
-                points: balance,
-                tier: profileData?.tier || 'Bronze',
-                country: getCountryInfo(country),
-                x: initialSpawn.x,
-                y: initialSpawn.y,
-                targetX: initialSpawn.x,
-                targetY: initialSpawn.y,
-                radius: initRadius,
-                isProtected: true,
-                protectedUntil: Date.now() + 5000
-            };
-        } else {
-            if (typeof player.x !== 'number' || typeof player.y !== 'number') {
-                const initialSpawn = getRandomOnPitchPosition(player.radius || 60);
-                player.x = initialSpawn.x;
-                player.y = initialSpawn.y;
-                player.targetX = initialSpawn.x;
-                player.targetY = initialSpawn.y;
-            }
-        }
-
-        delete standVault[socketId];
-        player.inStand = false;
-        player.isBot = false;
-        
-        activePlayers[socketId] = player;
-
-        ws.send(JSON.stringify({ 
-            type: 'INIT', 
-            selfId: socketId,
-            standLocations: STAND_LOCATIONS,
-            pitchBounds: PITCH_BOUNDS
-        }));
-    } else {
-        ws.send(JSON.stringify({ 
-            type: 'INIT', 
-            selfId: 'admin_dashboard',
-            standLocations: STAND_LOCATIONS,
-            pitchBounds: PITCH_BOUNDS
-        }));
+    let profileData = null;
+    if (supabase && userId && !userId.startsWith('guest_')) {
+        const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
+        profileData = data;
     }
+
+    const isGuest = socketId.startsWith('guest_');
+    let player = activePlayers[socketId] || standVault[socketId];
+
+    if (!player) {
+        const balance = 1;
+        const country = profileData?.country_code || selectedCountry;
+        const initRadius = calculateRadius(balance);
+        const initialSpawn = getRandomOnPitchPosition(initRadius);
+
+        player = {
+            id: socketId,
+            name: profileData?.display_name || profileData?.username || (isGuest ? `زائر_${socketId.slice(-4)}` : 'لاعب'),
+            points: balance,
+            tier: profileData?.tier || 'Bronze',
+            country: getCountryInfo(country),
+            x: initialSpawn.x,
+            y: initialSpawn.y,
+            targetX: initialSpawn.x,
+            targetY: initialSpawn.y,
+            radius: initRadius,
+            isProtected: true,
+            protectedUntil: Date.now() + 5000
+        };
+    } else {
+        if (typeof player.x !== 'number' || typeof player.y !== 'number') {
+            const initialSpawn = getRandomOnPitchPosition(player.radius || 60);
+            player.x = initialSpawn.x;
+            player.y = initialSpawn.y;
+            player.targetX = initialSpawn.x;
+            player.targetY = initialSpawn.y;
+        }
+    }
+
+    delete standVault[socketId];
+    player.inStand = false;
+    player.isBot = false;
+    
+    activePlayers[socketId] = player;
+
+    ws.send(JSON.stringify({ 
+        type: 'INIT', 
+        selfId: socketId,
+        standLocations: STAND_LOCATIONS,
+        pitchBounds: PITCH_BOUNDS
+    }));
 
     ws.on('message', (message) => {
         try {
@@ -333,7 +324,7 @@ wss.on('connection', async (ws, req) => {
                     let p = standVault[socketId];
                     delete standVault[socketId];
 
-                    p.points = 1; // إعادة النزول للساحة بنقطة واحدة فقط
+                    p.points = 1;
                     p.radius = calculateRadius(p.points);
 
                     const spawnPos = getRandomOnPitchPosition(p.radius || 60);
@@ -357,7 +348,7 @@ wss.on('connection', async (ws, req) => {
                 }
             } else if (data.type === 'ADMIN_ACTION') {
                 if (data.adminKey && data.adminKey !== ADMIN_SECRET) {
-                    console.warn(`محاولة تنفيذ أمر إداري بمفتاح غير صحيح من: ${socketId}`);
+                    console.warn(`محاولة أداء أمر إداري بمفتاح خطأ من: ${socketId}`);
                     return;
                 }
 
@@ -373,31 +364,22 @@ wss.on('connection', async (ws, req) => {
                     });
                 } else if (data.action === 'SET_GUEST_POINTS') {
                     const newPts = Math.max(1, parseInt(data.points) || 10);
-                    if (data.targetGuestId) {
-                        if (activePlayers[data.targetGuestId] && isGuestPlayer(activePlayers[data.targetGuestId])) {
-                            activePlayers[data.targetGuestId].points = newPts;
-                            activePlayers[data.targetGuestId].radius = calculateRadius(newPts);
+                    Object.keys(activePlayers).forEach(id => {
+                        if (isGuestPlayer(activePlayers[id]) && !activePlayers[id].isBot) {
+                            activePlayers[id].points = newPts;
+                            activePlayers[id].radius = calculateRadius(newPts);
                         }
-                    } else {
-                        Object.keys(activePlayers).forEach(id => {
-                            if (isGuestPlayer(activePlayers[id]) && !activePlayers[id].isBot) {
-                                activePlayers[id].points = newPts;
-                                activePlayers[id].radius = calculateRadius(newPts);
-                            }
-                        });
-                    }
+                    });
                 } else if (data.action === 'SET_INCENTIVE_TARGET') {
-                    const newTarget = Math.max(1, parseInt(data.target) || 10);
-                    incentiveTarget = newTarget;
+                    incentiveTarget = Math.max(1, parseInt(data.target) || 10);
                     checkIncentivePool();
                 } else if (data.action === 'SET_INCENTIVE_POOL') {
-                    const newPool = Math.max(0, parseInt(data.points) || 0);
-                    incentivePool = newPool;
+                    incentivePool = Math.max(0, parseInt(data.points) || 0);
                     checkIncentivePool();
                 }
             }
         } catch (e) {
-            console.error("خطأ معالجة رسالة WebSocket:", e);
+            console.error("خطأ معالجة الرسالة:", e);
         }
     });
 
