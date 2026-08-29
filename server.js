@@ -18,6 +18,7 @@ if (SUPABASE_URL && SUPABASE_KEY) {
     supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
+// 🏟️ أبعاد الساحة الفعلية
 const PITCH_BOUNDS = { minX: 500, maxX: 6700, minY: 1900, maxY: 5500 };
 
 const STAND_LOCATIONS = {
@@ -29,7 +30,7 @@ const STAND_LOCATIONS = {
 };
 
 let activePlayers = {}; 
-let standVault = {};    
+let standVault = {};     
 
 const BOT_NAMES = ['Ghost_Hunter', 'Shadow_King', 'Vortex_99', 'Neon_Blade', 'Zeus_BOY', 'Alpha_Wolf', 'Storm_Rider', 'Titan_X'];
 const COUNTRIES = ['SY', 'SA', 'TR', 'EG', 'AE'];
@@ -40,7 +41,6 @@ function calculateRadius(points) {
     return Math.min(300, Math.max(30, Math.round(calculatedRadius)));
 }
 
-// 📱 سرعة متزنة ومناسبة جداً لإصبع الهاتف
 function calculateSpeed(radius) {
     return Math.max(0.025, 0.075 - (radius / 3000));
 }
@@ -58,11 +58,16 @@ function getRandomOffPitchPosition(countryCode) {
     };
 }
 
+// 🎯 تم تعديل الدالة لتوليد مواقع تصل للحدود تماماً مع خصم نصف القطر فقط
 function getRandomOnPitchPosition(radius) {
-    const margin = radius + 50;
+    const minX = PITCH_BOUNDS.minX + radius;
+    const maxX = PITCH_BOUNDS.maxX - radius;
+    const minY = PITCH_BOUNDS.minY + radius;
+    const maxY = PITCH_BOUNDS.maxY - radius;
+
     return {
-        x: Math.floor(Math.random() * (PITCH_BOUNDS.maxX - PITCH_BOUNDS.minX - 2 * margin)) + PITCH_BOUNDS.minX + margin,
-        y: Math.floor(Math.random() * (PITCH_BOUNDS.maxY - PITCH_BOUNDS.minY - 2 * margin)) + PITCH_BOUNDS.minY + margin
+        x: Math.floor(Math.random() * (maxX - minX)) + minX,
+        y: Math.floor(Math.random() * (maxY - minY)) + minY
     };
 }
 
@@ -229,6 +234,7 @@ wss.on('connection', async (ws, req) => {
                 const current = activePlayers[socketId];
                 if (current && typeof data.x === 'number' && typeof data.y === 'number') {
                     const r = current.radius || 30;
+                    // 🎯 تقييد مركز الكرة ليصل حوافها إلى حدود الساحة بدقة
                     current.targetX = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, data.x));
                     current.targetY = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, data.y));
                 }
@@ -328,7 +334,7 @@ function executeEat(predator, victim) {
     }
 }
 
-// 🎯 معالجة الحركة لمنع الاهتزاز عند التلامس
+// 🎯 تحديث المواقع وتطبيق تقييد الحدود الصارم لكل الإحداثيات
 setInterval(() => {
     Object.values(activePlayers).forEach(p => {
         if (p.isBot) {
@@ -344,12 +350,16 @@ setInterval(() => {
             const dy = p.targetY - p.y;
             const dist = Math.hypot(dx, dy);
 
-            // Dead-zone: إذا كان إصبع اللاعب قريباً جداً من مركز الكرة (أقل من 10px)، تتوقف الكرة لإنهاء الاهتزاز
-            if (dist > 10) {
+            if (dist > 5) {
                 const speedFactor = calculateSpeed(p.radius);
                 p.x += dx * speedFactor;
                 p.y += dy * speedFactor;
             }
+
+            // 🛡️ التقييد المباشر لجسم الكرة لضمان ملامسة الحدود دون التجاوز
+            const r = p.radius || 30;
+            p.x = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, p.x));
+            p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, p.y));
         }
     });
 
