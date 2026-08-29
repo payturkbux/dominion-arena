@@ -39,14 +39,11 @@
         </div>
         <div class="flex flex-col gap-1.5">
             <button onclick="transferEnergyToWallet()" class="w-full bg-emerald-600/80 hover:bg-emerald-500 text-white font-bold py-1.5 px-3 rounded-xl text-xs transition active:scale-95 flex items-center justify-center gap-1 border border-emerald-400/30">
-                <span>📥</span> سحب الطاقة للمحفظة
+                <span>📥</span> سحب الطاقة للمحفظة (+1)
             </button>
             <div class="flex gap-1">
-                <button onclick="chargeOrbFromWallet(100)" class="flex-1 bg-cyan-600/80 hover:bg-cyan-500 text-white font-bold py-1.5 rounded-xl text-[11px] transition active:scale-95 border border-cyan-400/30">
-                    ⚡ شحن +100
-                </button>
-                <button onclick="chargeOrbFromWallet('ALL')" class="flex-1 bg-amber-600/80 hover:bg-amber-500 text-white font-bold py-1.5 rounded-xl text-[11px] transition active:scale-95 border border-amber-400/30">
-                    🔥 شحن الكل
+                <button onclick="chargeOrbFromWallet(1)" class="w-full bg-cyan-600/80 hover:bg-cyan-500 text-white font-bold py-1.5 rounded-xl text-xs transition active:scale-95 border border-cyan-400/30">
+                    ⚡ شحن +1
                 </button>
             </div>
         </div>
@@ -275,10 +272,10 @@
             return;
         }
 
-        const energyToTransfer = Math.floor(me.points);
+        const energyToTransfer = 1; // سحب نقطة واحدة فقط
+        me.points -= energyToTransfer;
         userWalletBalance += energyToTransfer;
-        me.points = 0;
-        me.radius = calculateRadius(0);
+        me.radius = calculateRadius(me.points);
 
         updateWalletDisplay();
         showNotification(`تم تحويل ⚡ ${energyToTransfer} PWR إلى المحفظة!`, "success");
@@ -292,13 +289,13 @@
         }
     }
 
-    async function chargeOrbFromWallet(amount) {
+    async function chargeOrbFromWallet(amount = 1) {
         if (userWalletBalance <= 0) {
             showNotification("رصيد المحفظة 0! يرجى شحن حسابك", "error");
             return;
         }
 
-        let chargeAmount = (amount === 'ALL') ? userWalletBalance : Math.min(amount, userWalletBalance);
+        let chargeAmount = 1; // شحن نقطة واحدة فقط
         userWalletBalance -= chargeAmount;
         
         const me = activePlayers[currentUserId];

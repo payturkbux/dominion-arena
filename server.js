@@ -260,7 +260,7 @@ wss.on('connection', async (ws, req) => {
         let player = activePlayers[socketId] || standVault[socketId];
 
         if (!player) {
-            const balance = isGuest ? 10 : Number(profileData?.points_balance || 0);
+            const balance = 1; // تهبيط الكرة برصيد نقطة واحدة
             const country = profileData?.country_code || selectedCountry;
             const initRadius = calculateRadius(balance);
             const initialSpawn = getRandomOnPitchPosition(initRadius);
@@ -314,12 +314,26 @@ wss.on('connection', async (ws, req) => {
         try {
             const data = JSON.parse(message);
 
-            if (data.type === 'REENTER_ARENA') {
+            if (data.type === 'TRANSFER_TO_WALLET') {
+                const player = activePlayers[socketId];
+                if (player) {
+                    const amount = Math.max(1, parseInt(data.amount) || 1);
+                    player.points = Math.max(0, (player.points || 0) - amount);
+                    player.radius = calculateRadius(player.points);
+                }
+            } else if (data.type === 'CHARGE_ORB') {
+                const player = activePlayers[socketId];
+                if (player) {
+                    const amount = Math.max(1, parseInt(data.amount) || 1);
+                    player.points = (player.points || 0) + amount;
+                    player.radius = calculateRadius(player.points);
+                }
+            } else if (data.type === 'REENTER_ARENA') {
                 if (standVault[socketId]) {
                     let p = standVault[socketId];
                     delete standVault[socketId];
 
-                    if (isGuestPlayer(p)) p.points = 10;
+                    p.points = 1; // إعادة النزول للساحة بنقطة واحدة فقط
                     p.radius = calculateRadius(p.points);
 
                     const spawnPos = getRandomOnPitchPosition(p.radius || 60);
