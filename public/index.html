@@ -127,32 +127,36 @@
     let dynamicStands = {};
     let selfId = null;
     let socket = null;
-    let currentUserProfile = null; // تخزين بيانات المستخدم المسجل محلياً
+    let currentUserProfile = null;
 
     let staticUsers = [];
 
+    // الربط الصحيح مع جدول profiles وأعمدته
     async function loadRealUsersFromDB() {
         if (!supabaseClient) return;
 
         try {
             const { data, error } = await supabaseClient
                 .from('profiles') 
-                .select('*');
+                .select('id, username, display_name, points_balance, tier');
 
             if (!error && data) {
-                staticUsers = data.map((u, index) => ({
-                    id: u.id || `db_${index}`,
-                    name: u.full_name || u.username || u.name || "لاعب",
-                    points: Number(u.balance ?? u.points ?? u.score ?? 0), // ضمان تحويل القيم الأرقام
-                    country: { 
-                        code: u.country_code || "SY", 
-                        flag: u.flag || "🇸🇾" 
-                    },
-                    tier: u.tier || ((u.balance || 0) > 10000 ? "Gold" : (u.balance || 0) > 5000 ? "Silver" : "Bronze"),
-                    radius: 40,
-                    x: 1200 + (index % 12) * 420,
-                    y: 2200 + Math.floor(index / 12) * 320
-                }));
+                staticUsers = data.map((u, index) => {
+                    const balanceVal = Number(u.points_balance || 0);
+                    return {
+                        id: u.id || `db_${index}`,
+                        name: u.display_name || u.username || "لاعب",
+                        points: balanceVal,
+                        tier: u.tier || "Bronze",
+                        country: { 
+                            code: "SY", 
+                            flag: "🇸🇾" 
+                        },
+                        radius: 40,
+                        x: 1200 + (index % 12) * 420,
+                        y: 2200 + Math.floor(index / 12) * 320
+                    };
+                });
                 updateLeaderboard();
             }
         } catch (err) {
@@ -183,7 +187,7 @@
         const logoutBtn = document.getElementById('logoutBtn');
         
         if (currentUserId && !currentUserId.startsWith('guest_')) {
-            if (authBtnText) authBtnText.innerText = currentUserProfile?.full_name || 'حسابي المسجل';
+            if (authBtnText) authBtnText.innerText = currentUserProfile?.display_name || currentUserProfile?.username || 'حسابي المسجل';
             if (authBtnIcon) authBtnIcon.innerText = '👤';
             if (logoutBtn) logoutBtn.classList.remove('hidden');
         } else {
@@ -212,13 +216,13 @@
                     standVault = data.standVault || {};
                     dynamicStands = data.dynamicStands || {};
                     
-                    // دمج بيانات المجلد الشخصي المسجل مع الكرة الخاصة بنا في حال كان السيرفر يقدم بيانات افتراضية
                     const myKey = selfId || userId;
                     const myOrb = activePlayers[myKey] || standVault[myKey] || activePlayers[selfId] || standVault[selfId];
                     
                     if (myOrb && currentUserProfile) {
-                        myOrb.name = currentUserProfile.full_name || currentUserProfile.username || myOrb.name;
-                        myOrb.points = currentUserProfile.balance ?? myOrb.points;
+                        myOrb.name = currentUserProfile.display_name || currentUserProfile.username || myOrb.name;
+                        myOrb.points = Number(currentUserProfile.points_balance || 0);
+                        myOrb.tier = currentUserProfile.tier || myOrb.tier;
                     }
 
                     if (myOrb) {
@@ -237,12 +241,12 @@
         }
     }
 
-    // جلب ملف المستخدم بعد تسجيل الدخول لرؤية الرصيد
+    // جلب بيانات ملف المستخدم من profiles
     async function fetchUserProfile(uid) {
         if (!supabaseClient || !uid) return;
         const { data, error } = await supabaseClient
             .from('profiles')
-            .select('*')
+            .select('id, username, display_name, points_balance, tier')
             .eq('id', uid)
             .single();
 
@@ -275,15 +279,13 @@
         errorEl.classList.add('hidden');
 
         if (!email || !password) {
-            const msg = "يرجى كتابة البريد الإلكتروني وكلمة السر";
-            errorEl.innerText = msg;
+            errorEl.innerText = "يرجى كتابة البريد الإلكتروني وكلمة السر";
             errorEl.classList.remove('hidden');
             return;
         }
 
         if (!supabaseClient) {
-            const msg = "تعذر الاتصال بقاعدة البيانات";
-            errorEl.innerText = msg;
+            errorEl.innerText = "تعذر الاتصال بقاعدة البيانات";
             errorEl.classList.remove('hidden');
             return;
         }
@@ -336,7 +338,6 @@
         camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.targetZoom * zoomFactor));
     }, { passive: false });
 
-    // تصحيح حسابات تحويل الماوس لإتاحة التحكم الدقيق
     function getWorldCoordinates(clientX, clientY) {
         const worldX = (clientX - screenWidth / 2) / camera.zoom + camera.x;
         const worldY = (clientY - screenHeight / 2) / camera.zoom + camera.y;
@@ -349,7 +350,6 @@
         return { x: clampedX, y: clampedY };
     }
 
-    // الدالة المسؤولة عن توجيه الحركة وتفاعل الماوس
     function sendTargetPosition(clientX, clientY) {
         const targetPos = getWorldCoordinates(clientX, clientY);
         const boundedPos = clampToPitch(targetPos.x, targetPos.y, 40);
@@ -361,12 +361,22 @@
                 y: boundedPos.y
             }));
         } else {
-            // محاكاة سريعة محلية عند عدم ربط WebSocket لضمان الاستجابة مع الماوس
             const myKey = selfId || currentUserId;
             let targetOrb = activePlayers[myKey] || standVault[myKey];
             if (!targetOrb) {
-                targetOrb = { id: myKey, x: 3600, y: 3700, radius: 40, points: currentUserProfile?.balance || 0, name: currentUserProfile?.full_name || 'أنا' };
+                targetOrb = { 
+                    id: myKey, 
+                    x: 3600, 
+                    y: 3700, 
+                    radius: 40, 
+                    points: Number(currentUserProfile?.points_balance || 0), 
+                    name: currentUserProfile?.display_name || currentUserProfile?.username || 'أنا',
+                    tier: currentUserProfile?.tier || 'Bronze'
+                };
                 activePlayers[myKey] = targetOrb;
+            } else if (currentUserProfile) {
+                targetOrb.points = Number(currentUserProfile.points_balance || 0);
+                targetOrb.tier = currentUserProfile.tier || targetOrb.tier;
             }
             targetOrb.x += (boundedPos.x - targetOrb.x) * 0.15;
             targetOrb.y += (boundedPos.y - targetOrb.y) * 0.15;
@@ -391,7 +401,6 @@
         
         let allEntities = [...Object.values(activePlayers), ...Object.values(standVault), ...staticUsers];
         
-        // إعادة الفرز وحذف التكرار
         const map = new Map();
         allEntities.forEach(item => map.set(item.id || item.name, item));
         allEntities = Array.from(map.values());
@@ -404,13 +413,13 @@
             const flag = (item.country && item.country.flag) ? item.country.flag : '🚩';
             const name = item.name || 'لاعب';
             const points = item.points !== undefined && item.points !== null ? Number(item.points).toLocaleString() : '0';
-            const tier = item.tier || 'Bronze';
+            const tier = item.tier ? ` [${item.tier}]` : '';
 
             return `
                 <li class="flex items-center justify-between p-2 rounded-lg ${isMe ? 'bg-amber-500/20 border border-amber-500/50' : 'bg-white/5'}">
                     <div class="flex items-center gap-2 truncate">
                         <span class="font-bold text-amber-400 w-4">${index + 1}.</span>
-                        <span class="truncate font-bold">${flag} ${name}</span>
+                        <span class="truncate font-bold">${flag} ${name}${tier}</span>
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="font-mono font-bold text-cyan-300">${points} $</span>
@@ -520,7 +529,6 @@
         const flag = (p.country && p.country.flag) ? p.country.flag : '';
         const name = p.name || 'لاعب';
         
-        // عرض الرصيد بشكل مباشر على الكرة
         const displayBalance = p.points !== undefined && p.points !== null ? Number(p.points).toLocaleString() : '0';
 
         ctx.fillText(`${flag} ${name}`, 0, -fontSize * 0.7);
@@ -551,7 +559,6 @@
         requestAnimationFrame(render);
     }
 
-    // بدء التشغيل والجلب التلقائي للبيانات
     if (currentUserId) fetchUserProfile(currentUserId);
     updateAuthUI();
     initWebSocket(currentUserId);
