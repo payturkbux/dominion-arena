@@ -25,8 +25,8 @@
         <div class="flex items-center gap-3">
             <span class="text-3xl">⚔️</span>
             <div>
-                <div id="hudStatusTitle" class="text-[10px] uppercase text-cyan-400 font-bold tracking-widest">كاميرا تكتيكية ديناميكية</div>
-                <div id="hudActionTip" class="text-xs font-bold text-emerald-400">حرّك الماوس أو انقر لتوجيه الكرة بالميدان</div>
+                <div id="hudStatusTitle" class="text-[10px] uppercase text-cyan-400 font-bold tracking-widest">ميدان التفاعل الحي والربط المتعدد</div>
+                <div id="hudActionTip" class="text-xs font-bold text-emerald-400">حرّك الماوس أو المس الشاشة لتحريك الكاميرا والكرة</div>
             </div>
         </div>
     </header>
@@ -80,6 +80,8 @@
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3YmdmZHRlb2Nld2l0ZHpyeXNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4NTE2MTMsImV4cCI6MjEwMzQyNzYxM30.C7hId5uF-p_7ibGSs0P7a2yxpOD-Zu4ON-lu7Pivn6k";
 
     let supabaseClient = null;
+    let realtimeChannel = null;
+
     try {
         if (typeof supabase !== 'undefined' && SUPABASE_URL && SUPABASE_ANON_KEY) {
             supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -118,55 +120,21 @@
 
     const PITCH_BOUNDS = { minX: 500, maxX: 6700, minY: 1900, maxY: 5500 };
 
-    let camera = { x: 3600, y: 3000, zoom: 0.38, targetZoom: 0.38 };
+    let camera = { x: 3600, y: 3700, zoom: 0.38, targetZoom: 0.38 };
     const MIN_ZOOM = 0.20;
     const MAX_ZOOM = 1.20;
 
     let activePlayers = {};
-    let standVault = {};
-    let dynamicStands = {};
-    let selfId = null;
-    let socket = null;
     let currentUserProfile = null;
+    let currentUserId = localStorage.getItem('dominion_user_id') || `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
 
-    let staticUsers = [];
+    let targetPos = { x: 3600, y: 3700 };
 
-    // دالة لحساب حجم الكرة بناءً على قيمة الرصيد
     function calculateRadius(points) {
         const base = 35;
         const val = Math.max(0, Number(points) || 0);
         const dynamicSize = Math.log10(val + 1) * 15;
         return Math.min(120, Math.max(base, base + dynamicSize));
-    }
-
-    async function loadRealUsersFromDB() {
-        if (!supabaseClient) return;
-
-        try {
-            const { data, error } = await supabaseClient
-                .from('profiles') 
-                .select('*');
-
-            if (!error && data) {
-                staticUsers = data.map((u, index) => {
-                    const balanceVal = Number(u.points_balance || 0);
-                    return {
-                        id: u.id || `db_${index}`,
-                        name: u.display_name || u.username || "لاعب",
-                        points: balanceVal,
-                        tier: u.tier || "Bronze",
-                        country: { code: "SY", flag: "🇸🇾" },
-                        radius: calculateRadius(balanceVal),
-                        x: 1200 + (index % 12) * 420,
-                        y: 2200 + Math.floor(index / 12) * 320
-                    };
-                });
-                syncMyOrbWithProfile();
-                updateLeaderboard();
-            }
-        } catch (err) {
-            console.error("DB Load Error:", err);
-        }
     }
 
     const monumentImages = {};
@@ -184,7 +152,92 @@
         monumentImages[code] = img;
     });
 
-    let currentUserId = localStorage.getItem('dominion_user_id') || '';
+    function initMyPlayer() {
+        const balanceVal = Number(currentUserProfile?.points_balance || 0);
+        const nameVal = currentUserProfile?.display_name || currentUserProfile?.username || (currentUserId.startsWith('guest_') ? `زائر_${currentUserId.slice(-4)}` : 'لاعب');
+
+        if (!activePlayers[currentUserId]) {
+            activePlayers[currentUserId] = {
+                id: currentUserId,
+                x: 3600,
+                y: 3700,
+                radius: calculateRadius(balanceVal),
+                points: balanceVal,
+                name: nameVal,
+                tier: currentUserProfile?.tier || 'Bronze',
+                country: { code: "SY", flag: "🇸🇾" }
+            };
+        } else {
+            activePlayers[currentUserId].points = balanceVal;
+            activePlayers[currentUserId].name = nameVal;
+            activePlayers[currentUserId].radius = calculateRadius(balanceVal);
+        }
+        updateLeaderboard();
+    }
+
+    function setupSupabaseRealtime() {
+        if (!supabaseClient) return;
+
+        if (realtimeChannel) supabaseClient.removeChannel(realtimeChannel);
+
+        realtimeChannel = supabaseClient.channel('arena_room', {
+            config: { broadcast: { self: false } }
+        });
+
+        realtimeChannel
+            .on('broadcast', { event: 'player_move' }, ({ payload }) => {
+                if (payload && payload.id) {
+                    activePlayers[payload.id] = {
+                        ...activePlayers[payload.id],
+                        ...payload,
+                        radius: calculateRadius(payload.points)
+                    };
+                    updateLeaderboard();
+                }
+            })
+            .subscribe((status) => {
+                if (status === 'SUBSCRIBED') {
+                    broadcastMyPosition();
+                }
+            });
+    }
+
+    function broadcastMyPosition() {
+        if (realtimeChannel && activePlayers[currentUserId]) {
+            realtimeChannel.send({
+                type: 'broadcast',
+                event: 'player_move',
+                payload: activePlayers[currentUserId]
+            });
+        }
+    }
+
+    async function loadRealUsersFromDB() {
+        if (!supabaseClient) return;
+        try {
+            const { data, error } = await supabaseClient.from('profiles').select('*');
+            if (!error && data) {
+                data.forEach((u) => {
+                    if (u.id !== currentUserId && !activePlayers[u.id]) {
+                        const balanceVal = Number(u.points_balance || 0);
+                        activePlayers[u.id] = {
+                            id: u.id,
+                            name: u.display_name || u.username || "لاعب",
+                            points: balanceVal,
+                            tier: u.tier || "Bronze",
+                            country: { code: "SY", flag: "🇸🇾" },
+                            radius: calculateRadius(balanceVal),
+                            x: 1200 + (Math.random() * 4000),
+                            y: 2200 + (Math.random() * 2500)
+                        };
+                    }
+                });
+                updateLeaderboard();
+            }
+        } catch (err) {
+            console.error("DB Load Error:", err);
+        }
+    }
 
     function updateAuthUI() {
         const authBtnText = document.getElementById('authBtnText');
@@ -202,87 +255,14 @@
         }
     }
 
-    function syncMyOrbWithProfile() {
-        if (!currentUserProfile) return;
-        
-        const myKey = selfId || currentUserId;
-        const balanceVal = Number(currentUserProfile.points_balance || 0);
-        const nameVal = currentUserProfile.display_name || currentUserProfile.username || 'أنا';
-        const dynamicRadius = calculateRadius(balanceVal);
-
-        if (!activePlayers[myKey]) {
-            activePlayers[myKey] = {
-                id: myKey,
-                x: 3600,
-                y: 3700,
-                radius: dynamicRadius,
-                points: balanceVal,
-                name: nameVal,
-                tier: currentUserProfile.tier || 'Bronze',
-                country: { code: "SY", flag: "🇸🇾" }
-            };
-        } else {
-            activePlayers[myKey].points = balanceVal;
-            activePlayers[myKey].name = nameVal;
-            activePlayers[myKey].radius = dynamicRadius;
-            activePlayers[myKey].tier = currentUserProfile.tier || activePlayers[myKey].tier;
-        }
-
-        const staticIndex = staticUsers.findIndex(u => u.id === currentUserId);
-        if (staticIndex !== -1) {
-            staticUsers[staticIndex].points = balanceVal;
-            staticUsers[staticIndex].name = nameVal;
-            staticUsers[staticIndex].radius = dynamicRadius;
-        }
-    }
-
-    function initWebSocket(userId) {
-        if (socket) socket.close();
-
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsHost = window.location.host || 'dominion-arena-o372.onrender.com';
-        const wsUrl = `${protocol}//${wsHost}${userId ? '?userId=' + encodeURIComponent(userId) : ''}`;
-        
-        try {
-            socket = new WebSocket(wsUrl);
-
-            socket.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === 'INIT') {
-                    selfId = data.selfId;
-                    syncMyOrbWithProfile();
-                } else if (data.type === 'SYNC') {
-                    activePlayers = data.activePlayers || {};
-                    standVault = data.standVault || {};
-                    dynamicStands = data.dynamicStands || {};
-                    
-                    syncMyOrbWithProfile();
-                    updateLeaderboard();
-                }
-            };
-
-            socket.onerror = () => {
-                showNotification("جاري تشغيل محاكاة الحركة المحلية المباشرة", "error");
-            };
-        } catch (e) {
-            console.error("WS Connect error:", e);
-        }
-    }
-
     async function fetchUserProfile(uid) {
-        if (!supabaseClient || !uid) return;
+        if (!supabaseClient || !uid || uid.startsWith('guest_')) return;
         try {
-            const { data, error } = await supabaseClient
-                .from('profiles')
-                .select('*')
-                .eq('id', uid)
-                .maybeSingle();
-
+            const { data, error } = await supabaseClient.from('profiles').select('*').eq('id', uid).maybeSingle();
             if (!error && data) {
                 currentUserProfile = data;
                 updateAuthUI();
-                syncMyOrbWithProfile();
-                updateLeaderboard();
+                initMyPlayer();
             }
         } catch (e) {
             console.error("Fetch profile error:", e);
@@ -310,15 +290,8 @@
         const password = passwordInput.value.trim();
 
         errorEl.classList.add('hidden');
-
         if (!email || !password) {
             errorEl.innerText = "يرجى كتابة البريد الإلكتروني وكلمة السر";
-            errorEl.classList.remove('hidden');
-            return;
-        }
-
-        if (!supabaseClient) {
-            errorEl.innerText = "تعذر الاتصال بقاعدة البيانات";
             errorEl.classList.remove('hidden');
             return;
         }
@@ -327,27 +300,23 @@
         btnText.innerText = "جاري التحقق...";
 
         try {
-            const { data, error } = await supabaseClient.auth.signInWithPassword({
-                email: email,
-                password: password
-            });
-
+            const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
             if (error) {
                 errorEl.innerText = "البيانات المدخلة غير صحيحة";
                 errorEl.classList.remove('hidden');
                 showNotification("فشل تسجيل الدخول", "error");
             } else if (data && data.user) {
+                delete activePlayers[currentUserId];
                 currentUserId = data.user.id;
                 localStorage.setItem('dominion_user_id', currentUserId);
                 
                 await fetchUserProfile(currentUserId);
-                showNotification("تم تسجيل الدخول ورصد الرصيد بنجاح!", "success");
-                
+                showNotification("تم تسجيل الدخول بنجاح!", "success");
                 closeLoginModal();
-                initWebSocket(currentUserId);
+                setupSupabaseRealtime();
             }
         } catch (err) {
-            errorEl.innerText = "حدث خطأ غير متوقع أثناء الدخول";
+            errorEl.innerText = "حدث خطأ أثناء الدخول";
             errorEl.classList.remove('hidden');
         } finally {
             spinner.classList.add('hidden');
@@ -357,12 +326,14 @@
 
     async function submitLogout() {
         if (supabaseClient) await supabaseClient.auth.signOut();
+        delete activePlayers[currentUserId];
         localStorage.removeItem('dominion_user_id');
-        currentUserId = '';
+        currentUserId = `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
         currentUserProfile = null;
-        showNotification("تم خروج الحساب", "success");
+        showNotification("تم تسجيل الخروج", "success");
         updateAuthUI();
-        initWebSocket('');
+        initMyPlayer();
+        setupSupabaseRealtime();
     }
 
     window.addEventListener('wheel', (e) => {
@@ -377,48 +348,23 @@
         return { x: worldX, y: worldY };
     }
 
-    function clampToPitch(x, y, radius = 40) {
-        const clampedX = Math.max(PITCH_BOUNDS.minX + radius, Math.min(PITCH_BOUNDS.maxX - radius, x));
-        const clampedY = Math.max(PITCH_BOUNDS.minY + radius, Math.min(PITCH_BOUNDS.maxY - radius, y));
-        return { x: clampedX, y: clampedY };
-    }
+    function handlePointerMove(clientX, clientY) {
+        const worldPos = getWorldCoordinates(clientX, clientY);
+        const radius = activePlayers[currentUserId]?.radius || 40;
 
-    function sendTargetPosition(clientX, clientY) {
-        const targetPos = getWorldCoordinates(clientX, clientY);
-        const myKey = selfId || currentUserId;
-        const myOrb = activePlayers[myKey] || standVault[myKey];
-        const r = myOrb ? (myOrb.radius || 40) : 40;
-        
-        const boundedPos = clampToPitch(targetPos.x, targetPos.y, r);
-
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                type: 'TARGET',
-                x: boundedPos.x,
-                y: boundedPos.y
-            }));
-        } else {
-            let targetOrb = activePlayers[myKey] || standVault[myKey];
-            if (!targetOrb) {
-                syncMyOrbWithProfile();
-                targetOrb = activePlayers[myKey];
-            }
-            if (targetOrb) {
-                targetOrb.x += (boundedPos.x - targetOrb.x) * 0.15;
-                targetOrb.y += (boundedPos.y - targetOrb.y) * 0.15;
-            }
-        }
+        targetPos.x = Math.max(PITCH_BOUNDS.minX + radius, Math.min(PITCH_BOUNDS.maxX - radius, worldPos.x));
+        targetPos.y = Math.max(PITCH_BOUNDS.minY + radius, Math.min(PITCH_BOUNDS.maxY - radius, worldPos.y));
     }
 
     window.addEventListener('mousemove', (e) => {
         if (e.target.closest('header, aside, button, #loginModal, #toastContainer')) return;
-        sendTargetPosition(e.clientX, e.clientY);
+        handlePointerMove(e.clientX, e.clientY);
     });
 
     window.addEventListener('touchmove', (e) => {
         if (e.touches && e.touches.length > 0) {
             if (e.touches[0].target.closest('header, aside, button, #loginModal, #toastContainer')) return;
-            sendTargetPosition(e.touches[0].clientX, e.touches[0].clientY);
+            handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
         }
     }, { passive: true });
 
@@ -426,27 +372,21 @@
         const listEl = document.getElementById('leaderboardList');
         if (!listEl) return;
         
-        let allEntities = [...Object.values(activePlayers), ...Object.values(standVault), ...staticUsers];
-        
-        const map = new Map();
-        allEntities.forEach(item => map.set(item.id || item.name, item));
-        allEntities = Array.from(map.values());
-
+        let allEntities = Object.values(activePlayers);
         allEntities.sort((a, b) => (Number(b.points) || 0) - (Number(a.points) || 0));
         const top5 = allEntities.slice(0, 5);
 
         listEl.innerHTML = top5.map((item, index) => {
-            const isMe = item.id === selfId || item.id === currentUserId;
-            const flag = (item.country && item.country.flag) ? item.country.flag : '🚩';
+            const isMe = item.id === currentUserId;
+            const flag = item.country?.flag || '🚩';
             const name = item.name || 'لاعب';
-            const points = item.points !== undefined && item.points !== null ? Number(item.points).toLocaleString() : '0';
-            const tier = item.tier ? ` [${item.tier}]` : '';
+            const points = Number(item.points || 0).toLocaleString();
 
             return `
                 <li class="flex items-center justify-between p-2 rounded-lg ${isMe ? 'bg-amber-500/20 border border-amber-500/50' : 'bg-white/5'}">
                     <div class="flex items-center gap-2 truncate">
                         <span class="font-bold text-amber-400 w-4">${index + 1}.</span>
-                        <span class="truncate font-bold">${flag} ${name}${tier}</span>
+                        <span class="truncate font-bold">${flag} ${name}</span>
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="font-mono font-bold text-cyan-300">${points} $</span>
@@ -460,7 +400,7 @@
         ctx.fillStyle = "#0c1220";
         ctx.fillRect(-3000, -3000, 13000, 12000);
 
-        let lightGrad = ctx.createRadialGradient(3600, 3000, 500, 3600, 3000, 5500);
+        let lightGrad = ctx.createRadialGradient(3600, 3700, 500, 3600, 3700, 5500);
         lightGrad.addColorStop(0, "rgba(0, 245, 255, 0.1)");
         lightGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
         ctx.fillStyle = lightGrad;
@@ -491,42 +431,14 @@
         ctx.beginPath(); ctx.arc(3600, 3700, 450, 0, Math.PI * 2); ctx.stroke();
     }
 
-    function drawStandsStructure() {
-        Object.keys(countryLandmarks).forEach(code => {
-            const c = countryLandmarks[code];
-            let standGrad = ctx.createLinearGradient(c.standX - 450, 700, c.standX + 450, 1600);
-            standGrad.addColorStop(0, "#192234");
-            standGrad.addColorStop(1, "#0f1624");
-            ctx.fillStyle = standGrad;
-            
-            ctx.beginPath();
-            if (ctx.roundRect) {
-                ctx.roundRect(c.standX - 450, 750, 900, 850, 24);
-            } else {
-                ctx.rect(c.standX - 450, 750, 900, 850);
-            }
-            ctx.fill();
-
-            ctx.strokeStyle = c.color;
-            ctx.lineWidth = 4;
-            ctx.stroke();
-
-            ctx.fillStyle = "#ffffff";
-            ctx.font = "bold 34px 'Tajawal'";
-            ctx.textAlign = "center";
-            ctx.fillText(`${c.flag} مدرج - ${c.name}`, c.standX, 810);
-        });
-    }
-
-    function drawOrb(p, isStand) {
+    function drawOrb(p) {
         if (!p || typeof p.x !== 'number' || typeof p.y !== 'number') return;
         
         ctx.save();
         ctx.translate(p.x, p.y);
 
-        // نصف القطر يتفاعل ديناميكياً مع الرصيد
         const radius = p.radius || calculateRadius(p.points);
-        const countryCode = (p.country && p.country.code) ? p.country.code : "SY";
+        const countryCode = p.country?.code || "SY";
         const img = monumentImages[countryCode];
         const themeColor = countryLandmarks[countryCode]?.color || "#00f5ff";
 
@@ -545,21 +457,19 @@
         ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
 
         ctx.lineWidth = 4;
-        ctx.strokeStyle = (p.id === selfId || p.id === currentUserId) ? "#ffd700" : themeColor;
+        ctx.strokeStyle = (p.id === currentUserId) ? "#ffd700" : themeColor;
         ctx.stroke();
 
         ctx.fillStyle = "#ffffff";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         
-        // تعديل حجم الخط بتناسب مع حجم الكرة
         const fontSize = Math.max(12, radius * 0.3);
         ctx.font = `bold ${fontSize}px 'Tajawal'`;
         
-        const flag = (p.country && p.country.flag) ? p.country.flag : '';
+        const flag = p.country?.flag || '';
         const name = p.name || 'لاعب';
-        
-        const displayBalance = p.points !== undefined && p.points !== null ? Number(p.points).toLocaleString() : '0';
+        const displayBalance = Number(p.points || 0).toLocaleString();
 
         ctx.fillText(`${flag} ${name}`, 0, -fontSize * 0.7);
         ctx.font = `bold ${fontSize * 0.85}px 'Sora'`;
@@ -569,17 +479,28 @@
         ctx.restore();
     }
 
+    let lastBroadcastTime = 0;
     function render() {
-        // سلاسة الزوم
-        camera.zoom += (camera.targetZoom - camera.zoom) * 0.1;
+        const me = activePlayers[currentUserId];
+        
+        if (me) {
+            // تحريك الكرة بسلاسة ونعومة نحو الهدف
+            me.x += (targetPos.x - me.x) * 0.1;
+            me.y += (targetPos.y - me.y) * 0.1;
 
-        // تتبع الكاميرا للكرة الخاصة بالمستخدم أفقياً وعمودياً باستمرار
-        const myKey = selfId || currentUserId;
-        const myOrb = activePlayers[myKey] || standVault[myKey];
-        if (myOrb) {
-            camera.x += (myOrb.x - camera.x) * 0.1;
-            camera.y += (myOrb.y - camera.y) * 0.1;
+            // الكاميرا تتبع كرة اللاعب دائماً في المنتصف بدقة
+            camera.x += (me.x - camera.x) * 0.1;
+            camera.y += (me.y - camera.y) * 0.1;
+
+            // بث موقع الكرة الحالي إلى الأجهزة الأخرى كل 50 ملي ثانية
+            const now = Date.now();
+            if (now - lastBroadcastTime > 50) {
+                broadcastMyPosition();
+                lastBroadcastTime = now;
+            }
         }
+
+        camera.zoom += (camera.targetZoom - camera.zoom) * 0.1;
 
         ctx.clearRect(0, 0, screenWidth, screenHeight);
         ctx.save();
@@ -588,19 +509,16 @@
         ctx.translate(-camera.x, -camera.y);
 
         drawStadiumPitch();
-        drawStandsStructure();
-
-        staticUsers.forEach(p => drawOrb(p, false));
-        Object.values(standVault).forEach(p => drawOrb(p, true));
-        Object.values(activePlayers).forEach(p => drawOrb(p, false));
+        Object.values(activePlayers).forEach(p => drawOrb(p));
 
         ctx.restore();
         requestAnimationFrame(render);
     }
 
-    if (currentUserId) fetchUserProfile(currentUserId);
+    initMyPlayer();
+    if (!currentUserId.startsWith('guest_')) fetchUserProfile(currentUserId);
     updateAuthUI();
-    initWebSocket(currentUserId);
+    setupSupabaseRealtime();
     loadRealUsersFromDB();
     render();
 </script>
