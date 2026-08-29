@@ -572,7 +572,7 @@
     }
 
     // ====================================================
-    // ⚡ رسم المستودع مع إشعاع قوي وديناميكي يزداد مع زيادة الطاقة المخزنة
+    // ⚡ رسم المستودع بصورة مشرقة وواضحة جداً وبدون تعتيم
     // ====================================================
     function drawStands() {
         if (!standLocations) return;
@@ -590,14 +590,13 @@
             const rawPoints = Number(standTotals[code] || 0);
             const totalEnergy = rawPoints.toLocaleString();
 
-            // 1. حساب قوة الإشعاع والقطر الخارجي للهالة بناءً على كمية الطاقة
             const energyMultiplier = Math.min(5.0, 1.0 + Math.pow(rawPoints, 0.45) * 0.08);
             const outerGlowRadius = (size / 2) * (1.2 + energyMultiplier * 0.3);
             const borderThickness = Math.min(600, 120 * energyMultiplier);
 
             ctx.save();
             
-            // 2. رسم هالة إشعاعية دائرية متوهجة تتمدد وتسطع مع زيادة الطاقة
+            // 1. هالة إشعاعية دائرية متوهجة خلف المستودع
             let glowGrad = ctx.createRadialGradient(stand.x, stand.y, size * 0.4, stand.x, stand.y, outerGlowRadius);
             glowGrad.addColorStop(0, themeColor);
             glowGrad.addColorStop(0.5, themeColor);
@@ -610,37 +609,35 @@
             ctx.fill();
             ctx.globalAlpha = 1.0;
 
-            // 3. خلفية وصورة المستودع
+            // 2. خلفية وصورة المستودع بدقة عالية وإضاءة فاتحة بدون تعتيم (0.9 Opacity)
             if (img && img.complete && img.naturalWidth !== 0) {
-                ctx.globalAlpha = 0.4;
+                ctx.globalAlpha = 0.9; // صورة مشرقة وواضحة جداً
                 ctx.drawImage(img, x, y, size, size);
                 ctx.globalAlpha = 1.0;
             } else {
-                ctx.fillStyle = "rgba(15, 23, 42, 0.85)";
+                ctx.fillStyle = "#1e293b";
                 ctx.fillRect(x, y, size, size);
             }
 
-            // 4. رسم محيط إشعاعي عريض حول المستودع
+            // 3. رسم الحدود والإطار المشع
             ctx.strokeStyle = themeColor;
             ctx.lineWidth = borderThickness;
             ctx.strokeRect(x, y, size, size);
             
-            // تعتيم داخلي
-            ctx.fillStyle = "rgba(0, 0, 0, 0.5)";
-            ctx.fillRect(x, y, size, size);
+            // 4. إظهار النصوص بشكل واضح فوق الصور المشرقة بإضافة ظل اسود خفيف خلف النص
+            ctx.shadowBlur = 40;
+            ctx.shadowColor = "#000000";
 
-            // 5. النص والعلم
+            // اسم الدولة والعلم
             ctx.fillStyle = "#ffffff";
             ctx.font = "bold 600px 'Tajawal'";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(`${landmark?.flag || ''} مستودع ${landmark?.name || code}`, stand.x, stand.y - 500);
 
-            // 6. عرض رقم الطاقة مع وهج قوي على النص نفسه
+            // رقم الطاقة الإجمالي
             ctx.font = "bold 650px 'Sora'";
             ctx.fillStyle = themeColor;
-            ctx.shadowBlur = Math.min(100, 20 * energyMultiplier);
-            ctx.shadowColor = themeColor;
             ctx.fillText(`⚡ ${totalEnergy} PWR`, stand.x, stand.y + 500);
 
             ctx.restore();
