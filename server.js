@@ -277,6 +277,7 @@ wss.on('connection', async (ws, req) => {
             protectedUntil: Date.now() + 5000
         };
     } else {
+        // الحفاظ على نقاط وموقع اللاعب عند إعادة الاتصال أو تحديث الصفحة
         player.points = player.points || 0;
         player.radius = calculateRadius(player.points);
 
@@ -472,19 +473,6 @@ function executeEat(predator, victim) {
 
     victim.points = Math.max(0, (victim.points || 0) - delta);
     victim.radius = calculateRadius(victim.points);
-
-    // بث حدث التصادم والابتلاع لجميع المشتركين لتفعيل الوميض والصوت
-    wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-            client.send(JSON.stringify({
-                type: 'COLLISION_EAT',
-                x: victim.x,
-                y: victim.y,
-                predatorId: predator.id,
-                victimId: victim.id
-            }));
-        }
-    });
 
     if (victim.points <= 0) {
         delete activePlayers[victim.id];
