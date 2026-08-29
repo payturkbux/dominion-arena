@@ -31,7 +31,7 @@
 </head>
 <body class="text-white relative w-screen h-screen select-none overflow-hidden">
 
-    <!-- لوحة المحفظة والشحن -->
+    <!-- لوحة المحفظة والشحن (الزاوية اليسرى العليا) -->
     <div id="walletHud" class="absolute top-16 left-4 z-40 glass-hud p-3 rounded-2xl border border-cyan-500/40 shadow-2xl flex flex-col gap-2 min-w-[170px]">
         <div class="flex items-center justify-between border-b border-cyan-500/20 pb-1.5">
             <span class="text-xs text-gray-300 font-bold">💎 المحفظة:</span>
@@ -39,7 +39,7 @@
         </div>
         <div class="flex flex-col gap-1.5">
             <button onclick="transferEnergyToWallet()" class="w-full bg-emerald-600/80 hover:bg-emerald-500 text-white font-bold py-1.5 px-3 rounded-xl text-xs transition active:scale-95 flex items-center justify-center gap-1 border border-emerald-400/30">
-                <span>📥</span> سحب الطاقة للمحفظة
+                <span>📥</span> سحب الطاقة للمحفظة (+1)
             </button>
             <div class="flex gap-1">
                 <button onclick="chargeOrbFromWallet(1)" class="w-full bg-cyan-600/80 hover:bg-cyan-500 text-white font-bold py-1.5 rounded-xl text-xs transition active:scale-95 border border-cyan-400/30">
@@ -208,22 +208,45 @@
         setTimeout(() => toast?.parentNode && toast.remove(), 2000);
     }
 
-    function transferEnergyToWallet() {
+    async function transferEnergyToWallet() {
         const me = activePlayers[currentUserId];
         if (!me || (me.points || 0) <= 0) {
             showNotification("لا يوجد طاقة في الكرة لسحبها!", "error");
             return;
         }
 
-        const energyToTransfer = Math.min(me.points, 10);
+        const energyToTransfer = 10;
+
+        me.points -= energyToTransfer;
+        userWalletBalance += energyToTransfer;
+        me.radius = calculateRadius(me.points);
+        updateWalletDisplay();
+
+        if (supabaseClient && !currentUserId.startsWith('guest_')) {
+            const { error } = await supabaseClient
+                .from('profiles')
+                .update({ points_balance: userWalletBalance })
+                .eq('id', currentUserId);
+
+            if (error) {
+                console.error("خطأ Supabase:", error);
+                me.points += energyToTransfer;
+                userWalletBalance -= energyToTransfer;
+                me.radius = calculateRadius(me.points);
+                updateWalletDisplay();
+                showNotification("فشل إيداع الطاقة في المحفظة!", "error");
+                return;
+            }
+        }
 
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: 'TRANSFER_TO_WALLET', amount: energyToTransfer }));
-            showNotification(`جاري تحويل ⚡ ${energyToTransfer} PWR إلى المحفظة...`, "success");
         }
+
+        showNotification(`تم تحويل ⚡ ${energyToTransfer} PWR إلى المحفظة!`, "success");
     }
 
-    function chargeOrbFromWallet(amount = 1) {
+    async function chargeOrbFromWallet(amount = 1) {
         if (userWalletBalance < amount) {
             showNotification("رصيد المحفظة غير كافٍ!", "error");
             return;
@@ -232,10 +255,33 @@
         const me = activePlayers[currentUserId];
         if (!me) return;
 
+        userWalletBalance -= amount;
+        me.points = (me.points || 0) + amount;
+        me.radius = calculateRadius(me.points);
+        updateWalletDisplay();
+
+        if (supabaseClient && !currentUserId.startsWith('guest_')) {
+            const { error } = await supabaseClient
+                .from('profiles')
+                .update({ points_balance: userWalletBalance })
+                .eq('id', currentUserId);
+
+            if (error) {
+                console.error("خطأ Supabase:", error);
+                userWalletBalance += amount;
+                me.points -= amount;
+                me.radius = calculateRadius(me.points);
+                updateWalletDisplay();
+                showNotification("فشل خصم الرصيد من المحفظة في قاعدة البيانات!", "error");
+                return;
+            }
+        }
+
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: 'CHARGE_ORB', amount: amount }));
-            showNotification(`جاري شحن الكرة بـ ⚡ ${amount} PWR...`, "success");
         }
+
+        showNotification(`تم شحن الكرة بـ ⚡ ${amount} PWR!`, "success");
     }
 
     let sidebarOpen = true;
@@ -288,6 +334,26 @@
 
     let eatEffects = [];
 
+    function triggerEatLightningEffect(x, y, radius, color) {
+        eatEffects.push({
+            x: x,
+            y: y,
+            radius: radius * 0.6,
+            maxRadius: radius * 2.5,
+            alpha: 1.0,
+            flash: 1.0,
+            color: color || '#00ffff',
+            spikes: Array.from({ length: 10 }, () => ({
+                angle: Math.random() * Math.PI * 2,
+                length: radius * (1.2 + Math.random() * 1.5),
+                branches: Array.from({ length: 2 }, () => ({
+                    offsetAngle: (Math.random() - 0.5) * 0.8,
+                    lengthRatio: 0.3 + Math.random() * 0.4
+                }))
+            }))
+        });
+    }
+
     function calculateRadius(points) {
         const val = Math.max(0, Number(points) || 0);
         const calculatedRadius = 60 + (Math.pow(val, 0.55) * 16);
@@ -310,7 +376,7 @@
         
         try {
             socket = new WebSocket(wsUrl);
-            socket.onopen = () => console.log("تم الاتصال بالشبكة بنجاح.");
+            socket.onopen = () => console.log("تم الاتصال بالشبكة بنجاح على Render.");
 
             socket.onmessage = (event) => {
                 try {
@@ -326,20 +392,26 @@
                         Object.keys(data.activePlayers || {}).forEach(id => {
                             const pData = data.activePlayers[id];
                             if (!activePlayers[id]) {
+                                const initialPoints = (id === currentUserId) ? 0 : (pData.points || 0);
                                 activePlayers[id] = { 
                                     ...pData, 
                                     x: pData.x, 
                                     y: pData.y, 
                                     targetX: pData.x, 
                                     targetY: pData.y, 
-                                    points: pData.points || 0, 
-                                    radius: calculateRadius(pData.points || 0) 
+                                    points: initialPoints, 
+                                    radius: calculateRadius(initialPoints) 
                                 };
                             } else {
+                                if (pData.points > (activePlayers[id].points || 0) + 2) {
+                                    triggerEatLightningEffect(pData.x, pData.y, calculateRadius(pData.points), countryLandmarks[pData.country?.code]?.color || '#00f5ff');
+                                }
                                 activePlayers[id].targetX = pData.x;
                                 activePlayers[id].targetY = pData.y;
-                                activePlayers[id].points = pData.points;
-                                activePlayers[id].radius = calculateRadius(pData.points);
+                                if (id !== currentUserId) {
+                                    activePlayers[id].points = pData.points;
+                                    activePlayers[id].radius = calculateRadius(pData.points);
+                                }
                                 activePlayers[id].isProtected = pData.isProtected;
                                 activePlayers[id].protectedUntil = pData.protectedUntil;
                                 activePlayers[id].name = pData.name;
@@ -354,21 +426,17 @@
                         if (data.standLocations) standLocations = data.standLocations;
                         if (data.standTotals) standTotals = data.standTotals;
 
-                        if (data.walletBalance !== undefined && data.selfId === currentUserId) {
-                            userWalletBalance = Number(data.walletBalance) || 0;
-                            updateWalletDisplay();
-                        }
-
                         if (data.incentivePool !== undefined) {
                             const poolValEl = document.getElementById('incentivePoolVal');
                             if (poolValEl) poolValEl.innerText = Number(data.incentivePool || 0);
                         }
 
                         updateLeaderboard();
-                    } else if (data.type === 'WALLET_UPDATE') {
-                        userWalletBalance = Number(data.walletBalance) || 0;
-                        updateWalletDisplay();
                     } else if (data.type === 'EATEN') {
+                        const me = activePlayers[currentUserId];
+                        if (me) {
+                            triggerEatLightningEffect(me.x, me.y, me.radius, '#ff4b89');
+                        }
                         document.getElementById('respawnOverlay').classList.remove('hidden');
                         showNotification(`تم امتصاص طاقتك بواسطة ${data.eatenBy}`, 'error');
                     }
@@ -391,9 +459,78 @@
     function updatePhysics() {
         for (let i = eatEffects.length - 1; i >= 0; i--) {
             const fx = eatEffects[i];
-            fx.radius += 8; fx.alpha -= 0.04;
+            fx.radius += 10; 
+            fx.alpha -= 0.035;
+            if (fx.flash > 0) fx.flash -= 0.08;
             if (fx.alpha <= 0 || fx.radius >= fx.maxRadius) eatEffects.splice(i, 1);
         }
+    }
+
+    function drawEatEffects() {
+        eatEffects.forEach(fx => {
+            ctx.save();
+            ctx.translate(fx.x, fx.y);
+
+            // 1. وميض التصادم (Impact Flash)
+            if (fx.flash > 0) {
+                ctx.beginPath();
+                ctx.arc(0, 0, fx.radius * 1.8, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255, 255, 255, ${fx.flash * 0.8})`;
+                ctx.shadowBlur = 50;
+                ctx.shadowColor = "#ffffff";
+                ctx.fill();
+            }
+
+            // 2. هالة وموجة الصدمة (Shockwave Ring)
+            ctx.beginPath();
+            ctx.arc(0, 0, fx.radius, 0, Math.PI * 2);
+            ctx.strokeStyle = fx.color || "#00ffff";
+            ctx.lineWidth = Math.max(4, 14 * fx.alpha);
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = fx.color || "#00ffff";
+            ctx.globalAlpha = Math.max(0, fx.alpha);
+            ctx.stroke();
+
+            // 3. صعقات البرق للابتلاع (Swallow Lightning Sparks)
+            if (fx.spikes) {
+                fx.spikes.forEach(spike => {
+                    ctx.beginPath();
+                    ctx.moveTo(0, 0);
+                    let curX = 0, curY = 0;
+                    const targetX = Math.cos(spike.angle) * spike.length;
+                    const targetY = Math.sin(spike.angle) * spike.length;
+                    const steps = 4;
+                    for (let s = 1; s <= steps; s++) {
+                        const t = s / steps;
+                        const nextX = targetX * t + (Math.random() - 0.5) * 30;
+                        const nextY = targetY * t + (Math.random() - 0.5) * 30;
+                        ctx.lineTo(nextX, nextY);
+                        curX = nextX;
+                        curY = nextY;
+                    }
+                    ctx.strokeStyle = Math.random() > 0.4 ? "#ffffff" : (fx.color || "#00ffff");
+                    ctx.lineWidth = 3 + Math.random() * 4;
+                    ctx.shadowBlur = 25;
+                    ctx.shadowColor = fx.color || "#00ffff";
+                    ctx.stroke();
+
+                    // تفريعات البرق الفرعية
+                    spike.branches.forEach(branch => {
+                        ctx.beginPath();
+                        ctx.moveTo(curX * 0.5, curY * 0.5);
+                        const bAngle = spike.angle + branch.offsetAngle;
+                        const bLen = spike.length * branch.lengthRatio;
+                        const bx = Math.cos(bAngle) * bLen + (Math.random() - 0.5) * 15;
+                        const by = Math.sin(bAngle) * bLen + (Math.random() - 0.5) * 15;
+                        ctx.lineTo(bx, by);
+                        ctx.strokeStyle = "#ffffff";
+                        ctx.lineWidth = 2;
+                        ctx.stroke();
+                    });
+                });
+            }
+            ctx.restore();
+        });
     }
 
     function updateAuthUI() {
@@ -652,6 +789,19 @@
         const themeColor = countryLandmarks[countryCode]?.color || "#00f5ff";
         const isProtected = p.protectedUntil && (p.protectedUntil > Date.now());
 
+        // هالة توهج خارجية ملونة للكرة (Orb Glow Aura)
+        ctx.save();
+        let glowGrad = ctx.createRadialGradient(0, 0, radius * 0.6, 0, 0, radius * 1.4);
+        glowGrad.addColorStop(0, themeColor);
+        glowGrad.addColorStop(0.5, themeColor);
+        glowGrad.addColorStop(1, "rgba(0,0,0,0)");
+        ctx.fillStyle = glowGrad;
+        ctx.globalAlpha = 0.65;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius * 1.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+
         if (isProtected) {
             ctx.beginPath();
             ctx.arc(0, 0, radius + 25, 0, Math.PI * 2);
@@ -677,9 +827,12 @@
         ctx.fillStyle = glassGrad;
         ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
 
+        ctx.shadowBlur = Math.max(20, radius * 0.4);
+        ctx.shadowColor = (p.id === currentUserId) ? "#ffd700" : themeColor;
         ctx.lineWidth = Math.max(8, radius * 0.05);
         ctx.strokeStyle = (p.id === currentUserId) ? "#ffd700" : themeColor;
         ctx.stroke();
+        ctx.shadowBlur = 0;
 
         ctx.fillStyle = "#ffffff";
         ctx.textAlign = "center";
@@ -734,6 +887,7 @@
         drawStands();
 
         Object.values(activePlayers).forEach(p => drawOrb(p));
+        drawEatEffects();
 
         ctx.restore();
         requestAnimationFrame(render);
