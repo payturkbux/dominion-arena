@@ -275,7 +275,7 @@ wss.on('connection', async (ws, req) => {
                     let p = standVault[socketId];
                     delete standVault[socketId];
 
-                    if (isGuestPlayer(p)) p.points = 10;
+                    if (isGuestPlayer(p)) p.points = 100;
                     p.radius = calculateRadius(p.points);
 
                     const spawnPos = getRandomOnPitchPosition(p.radius || 60);
