@@ -324,12 +324,15 @@
 
     function setupWebSocket() {
         if (socket) socket.close();
+        
+        // بناء مسار WSS للتوافق التام مع Render و GitHub Pages
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}?userId=${currentUserId}&country=${selectedCountryCode}`;
+        const host = window.location.host;
+        const wsUrl = `${protocol}//${host}?userId=${currentUserId}&country=${selectedCountryCode}`;
         
         try {
             socket = new WebSocket(wsUrl);
-            socket.onopen = () => console.log("تم الاتصال بالشبكة.");
+            socket.onopen = () => console.log("تم الاتصال بالشبكة بنجاح على Render.");
 
             socket.onmessage = (event) => {
                 try {
@@ -469,7 +472,7 @@
         localStorage.removeItem('dominion_user_id');
         currentUserId = `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
         currentUserProfile = null;
-        userWalletBalance = 0; 
+        userWalletBalance = 0;
         updateAuthUI();
         setupWebSocket();
     }
@@ -742,10 +745,7 @@
         requestAnimationFrame(render);
     }
 
-    // تهيئة واستدعاء بيانات الحساب فوراً للعملاء المسجلين عند تحميل الصفحة
-    if (!currentUserId.startsWith('guest_')) {
-        fetchUserProfile(currentUserId);
-    }
+    if (!currentUserId.startsWith('guest_')) fetchUserProfile(currentUserId);
     updateAuthUI();
     render();
 </script>

@@ -10,6 +10,11 @@ const wss = new WebSocket.Server({ server });
 
 app.use(express.static('public'));
 
+// مسار فحص الحالة الحية لمظلة Render (Health Check)
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/public/index.html');
+});
+
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
@@ -179,7 +184,6 @@ function checkIncentivePool() {
     }
 }
 
-// 🔥 قراءة points_balance الحقيقي من جدول public.profiles للأعضاء أوفلاين
 async function loadOfflinePlayersToStands() {
     if (!supabase) return;
     try {
@@ -252,12 +256,7 @@ wss.on('connection', async (ws, req) => {
 
     let profileData = null;
     if (supabase && userId && !userId.startsWith('guest_')) {
-        // 🔥 قراءة حقل points_balance حصراً
-        const { data } = await supabase
-            .from('profiles')
-            .select('id, display_name, username, points_balance, tier, country_code')
-            .eq('id', userId)
-            .maybeSingle();
+        const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
         profileData = data;
     }
 
@@ -265,8 +264,7 @@ wss.on('connection', async (ws, req) => {
     let player = activePlayers[socketId] || standVault[socketId];
 
     if (!player) {
-        // 🔥 الرصيد الابتدائي الحقيقي للحساب المعتمد يأتي من points_balance (أو 0 للزوار)
-        const balance = isGuest ? 0 : Number(profileData?.points_balance || 0);
+        const balance = profileData?.points_balance !== undefined ? Number(profileData.points_balance) : 1;
         const country = profileData?.country_code || selectedCountry;
         const initRadius = calculateRadius(balance);
         const initialSpawn = getRandomOnPitchPosition(initRadius);
@@ -301,11 +299,10 @@ wss.on('connection', async (ws, req) => {
     
     activePlayers[socketId] = player;
 
-    // 🔥 تمرير walletBalance برصيد points_balance التابع للمستخدم الفعلي بدقة
     ws.send(JSON.stringify({ 
         type: 'INIT', 
         selfId: socketId,
-        walletBalance: isGuest ? 0 : Number(profileData?.points_balance || 0),
+        walletBalance: player.points,
         standLocations: STAND_LOCATIONS,
         pitchBounds: PITCH_BOUNDS
     }));
