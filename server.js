@@ -18,16 +18,24 @@ if (SUPABASE_URL && SUPABASE_KEY) {
     supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
-// 🏟️ أبعاد الساحة الكبرى المضاعفة والمطابقة تماماً للعميل
+// 🏟️ أبعاد الساحة الكبرى الفعلية
 const PITCH_BOUNDS = { minX: 0, maxX: 14000, minY: 0, maxY: 8000 };
 
-// 🚩 مواقع مدرجات الدول المحدثة حول حدود الساحة
+// 🚩 مواضع المدرجات الموزعة بالتساوي وبحدود واضحة على كامل حواف الساحة الخارجية
 const STAND_LOCATIONS = {
-    "SY": { x: 7000,  y: -700 },  // المدرج الشمالي (سوريا)
-    "SA": { x: 7000,  y: 8700 },  // المدرج الجنوبي (السعودية)
-    "TR": { x: -700,  y: 4000 },  // المدرج الغربي (تركيا)
-    "EG": { x: 14700, y: 4000 },  // المدرج الشرقي (مصر)
-    "AE": { x: 14700, y: 1000 }   // مدرج الإمارات
+    "SY": { x: 3500,  y: -500,  width: 2500, height: 400, edge: 'TOP' },     // المدرج الشمالي 1 (سوريا)
+    "TR": { x: 10500, y: -500,  width: 2500, height: 400, edge: 'TOP' },     // المدرج الشمالي 2 (تركيا)
+    "SA": { x: 3500,  y: 8500,  width: 2500, height: 400, edge: 'BOTTOM' },  // المدرج الجنوبي 1 (السعودية)
+    "EG": { x: 10500, y: 8500,  width: 2500, height: 400, edge: 'BOTTOM' },  // المدرج الجنوبي 2 (مصر)
+    "AE": { x: 14500, y: 4000,  width: 400,  height: 2500, edge: 'RIGHT' }   // المدرج الشرقي (الإمارات)
+};
+
+const COUNTRY_DATA = {
+    "SY": { name: "سوريا", flag: "🇸🇾", image: "/flags/sy.png" },
+    "SA": { name: "السعودية", flag: "🇸🇦", image: "/flags/sa.png" },
+    "TR": { name: "تركيا", flag: "🇹🇷", image: "/flags/tr.png" },
+    "EG": { name: "مصر", flag: "🇪🇬", image: "/flags/eg.png" },
+    "AE": { name: "الإمارات", flag: "🇦🇪", image: "/flags/ae.png" }
 };
 
 let activePlayers = {}; 
@@ -39,27 +47,35 @@ const COUNTRIES = ['SY', 'SA', 'TR', 'EG', 'AE'];
 // ⚽ مضاعفة حجم الكرات
 function calculateRadius(points) {
     const val = Math.max(0, Number(points) || 0);
-    // يبدأ الحجم من 60 بدلاً من 30 ومضاعفة النمو
     const calculatedRadius = 60 + (Math.pow(val, 0.55) * 16);
     return Math.min(800, Math.max(60, Math.round(calculatedRadius)));
 }
 
-// 🐌 تقليل السرعة لتكون ثقيلة وسلسة
+// 🐌 تقليل السرعة لتكون سلسة وثقيلة
 function calculateSpeed(radius) {
-    // سرعة أبطأ تناسب الحجم المكبر
     return Math.max(0.012, 0.040 - (radius / 6000));
 }
 
-function getCountryFlag(code) {
-    const flags = { "SY": "🇸🇾", "SA": "🇸🇦", "TR": "🇹🇷", "EG": "🇪🇬", "AE": "🇦🇪" };
-    return flags[code] || "🚩";
+function getCountryInfo(code) {
+    const data = COUNTRY_DATA[code] || COUNTRY_DATA['SY'];
+    return {
+        code: code || 'SY',
+        flag: data.flag,
+        flagImage: data.image
+    };
 }
 
+// 📐 حساب موقع متساوٍ ومحدد داخل حدود المدرج المعني خلف الحواف
 function getRandomOffPitchPosition(countryCode) {
     const stand = STAND_LOCATIONS[countryCode] || STAND_LOCATIONS['SY'];
+    
+    // توزيع الجماهير/اللاعبين داخل مستطيل المدرج المحدد بدقة
+    const halfW = (stand.width || 2000) / 2;
+    const halfH = (stand.height || 400) / 2;
+
     return {
-        x: stand.x + (Math.random() * 400 - 200),
-        y: stand.y + (Math.random() * 200 - 100)
+        x: stand.x + (Math.random() * (halfW * 1.6) - halfW * 0.8),
+        y: stand.y + (Math.random() * (halfH * 1.6) - halfH * 0.8)
     };
 }
 
@@ -90,7 +106,7 @@ function spawnBot(botId) {
         points: randomInitialPoints,
         eatenPool: 0,
         tier: 'Gold',
-        country: { code: randomCountry, flag: getCountryFlag(randomCountry) },
+        country: getCountryInfo(randomCountry),
         x: pos.x,
         y: pos.y,
         targetX: pos.x,
@@ -99,7 +115,7 @@ function spawnBot(botId) {
     };
 }
 
-// 🤖 زيادة عدد البوتات إلى 18 بوت
+// 🤖 إطلاق 18 بوت
 for (let i = 1; i <= 18; i++) {
     spawnBot(`bot_${i}`);
 }
@@ -127,7 +143,7 @@ async function loadOfflinePlayersToStands() {
                     x: pos.x,
                     y: pos.y,
                     radius: calculateRadius(balance),
-                    country: { code: country, flag: getCountryFlag(country) }
+                    country: getCountryInfo(country)
                 };
             });
         }
@@ -179,8 +195,8 @@ wss.on('connection', async (ws, req) => {
 
     const urlParams = new URLSearchParams(req.url.replace(/^.*\?/, ''));
     const userId = urlParams.get('userId');
-    const selectedCountry = urlParams.get('country') || 'SY'; // استقبال الدولة المختارة من النافذة
-    
+    const selectedCountry = urlParams.get('country') || 'SY';
+
     const socketId = (userId && !userId.startsWith('guest_')) 
         ? userId 
         : 'guest_' + Math.random().toString(36).substr(2, 7);
@@ -203,7 +219,7 @@ wss.on('connection', async (ws, req) => {
         name: profileData?.display_name || profileData?.username || (socketId.startsWith('guest_') ? `زائر_${socketId.slice(-4)}` : 'لاعب'),
         points: balance,
         tier: profileData?.tier || 'Bronze',
-        country: { code: country, flag: getCountryFlag(country) },
+        country: getCountryInfo(country),
         x: initialSpawn.x,
         y: initialSpawn.y,
         radius: initRadius
@@ -216,7 +232,12 @@ wss.on('connection', async (ws, req) => {
 
     activePlayers[socketId] = player;
 
-    ws.send(JSON.stringify({ type: 'INIT', selfId: socketId }));
+    ws.send(JSON.stringify({ 
+        type: 'INIT', 
+        selfId: socketId,
+        standLocations: STAND_LOCATIONS,
+        pitchBounds: PITCH_BOUNDS
+    }));
 
     ws.on('message', (message) => {
         try {
@@ -241,7 +262,6 @@ wss.on('connection', async (ws, req) => {
                 const current = activePlayers[socketId];
                 if (current && typeof data.x === 'number' && typeof data.y === 'number') {
                     const r = current.radius || 60;
-                    // ضبط الحدود المطلقة للحركة داخل الساحة الكبرى
                     current.targetX = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, data.x));
                     current.targetY = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, data.y));
                 }
@@ -372,7 +392,6 @@ setInterval(() => {
             }
 
             const r = p.radius || 60;
-            // ضمان عدم خروج الكرة خارج إحداثيات الساحة الكبرى
             p.x = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, p.x));
             p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, p.y));
         }
@@ -383,7 +402,8 @@ setInterval(() => {
     const payload = JSON.stringify({
         type: 'SYNC',
         activePlayers,
-        standVault
+        standVault,
+        standLocations: STAND_LOCATIONS
     });
 
     wss.clients.forEach(client => {
