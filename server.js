@@ -14,7 +14,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
 // كلمة سر لوحة التحكم الإدارية
-const ADMIN_SECRET = process.env.ADMIN_SECRET || "MY_SECURE_ADMIN_KEY_123";
+const ADMIN_SECRET = process.env.ADMIN_SECRET || "Ezkyaa.2012.2013";
 
 let supabase = null;
 if (SUPABASE_URL && SUPABASE_KEY) {
@@ -25,7 +25,6 @@ const PITCH_BOUNDS = { minX: 0, maxX: 140000, minY: 0, maxY: 80000 };
 
 let incentivePool = 0; 
 let botCounter = 0;
-let defaultGuestPoints = 10; // رصيد الزائر الافتراضي عند الدخول
 
 const STAND_LOCATIONS = {
     "SY": { x: 15000,  y: -12000, size: 20000, edge: 'TOP' },
@@ -163,14 +162,12 @@ function spawnBotFromPool(initialPoints = 10) {
         country: getCountryInfo(randomCountry),
         x: pos.x,
         y: pos.y,
-        targetX: pos.x,
-        targetY: pos.y,
         vx: Math.cos(initialAngle),
         vy: Math.sin(initialAngle),
         changeTimer: Math.floor(Math.random() * 60) + 30,
         radius: radius,
-        isProtected: false,
-        protectedUntil: 0
+        isProtected: true,
+        protectedUntil: Date.now() + 5000
     };
 }
 
@@ -266,7 +263,7 @@ wss.on('connection', async (ws, req) => {
     let player = activePlayers[socketId] || standVault[socketId];
 
     if (!player) {
-        const balance = isGuest ? defaultGuestPoints : Number(profileData?.points_balance || 0);
+        const balance = isGuest ? 10 : Number(profileData?.points_balance || 0);
         const country = profileData?.country_code || selectedCountry;
         const initRadius = calculateRadius(balance);
         const initialSpawn = getRandomOnPitchPosition(initRadius);
@@ -317,7 +314,7 @@ wss.on('connection', async (ws, req) => {
                     let p = standVault[socketId];
                     delete standVault[socketId];
 
-                    if (isGuestPlayer(p)) p.points = defaultGuestPoints;
+                    if (isGuestPlayer(p)) p.points = 10;
                     p.radius = calculateRadius(p.points);
 
                     const spawnPos = getRandomOnPitchPosition(p.radius || 60);
@@ -328,7 +325,7 @@ wss.on('connection', async (ws, req) => {
                     p.targetX = spawnPos.x;
                     p.targetY = spawnPos.y;
                     p.isProtected = true;
-                    p.protectedUntil: Date.now() + 5000;
+                    p.protectedUntil = Date.now() + 5000;
                     
                     activePlayers[socketId] = p;
                 }
@@ -340,15 +337,16 @@ wss.on('connection', async (ws, req) => {
                     current.targetY = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, data.y));
                 }
             } else if (data.type === 'ADMIN_ACTION') {
+                // 🔒 حماية أوامر لوحة التحكم بالمفتاح السري
                 if (data.adminKey !== ADMIN_SECRET) {
                     console.warn(`محاولة تنفيذ أمر إداري غير مصرح بها من: ${socketId}`);
-                    return;
+                    return; // رفض الطلب فوراً
                 }
 
                 if (data.action === 'SPAWN_BOT') {
-                    const count = data.count || 1;
-                    const pts = data.points || 10;
-                    for (let i = 0; i < count; i++) {
+                    const count = Math.min(20, Math.max(1, parseInt(data.count) || 1));
+                    const pts = Math.max(1, parseInt(data.points) || 10);
+                    for (let c = 0; c < count; c++) {
                         spawnBotFromPool(pts);
                     }
                 } else if (data.action === 'CLEAR_BOTS') {
@@ -356,18 +354,17 @@ wss.on('connection', async (ws, req) => {
                         if (activePlayers[id].isBot) delete activePlayers[id];
                     });
                 } else if (data.action === 'SET_GUEST_POINTS') {
-                    const newPts = Math.max(1, Number(data.points) || 10);
+                    const newPts = Math.max(1, parseInt(data.points) || 10);
                     if (data.targetGuestId) {
-                        if (activePlayers[data.targetGuestId]) {
+                        if (activePlayers[data.targetGuestId] && isGuestPlayer(activePlayers[data.targetGuestId])) {
                             activePlayers[data.targetGuestId].points = newPts;
                             activePlayers[data.targetGuestId].radius = calculateRadius(newPts);
                         }
                     } else {
-                        defaultGuestPoints = newPts;
-                        Object.values(activePlayers).forEach(p => {
-                            if (isGuestPlayer(p) && !p.isBot) {
-                                p.points = newPts;
-                                p.radius = calculateRadius(newPts);
+                        Object.keys(activePlayers).forEach(id => {
+                            if (isGuestPlayer(activePlayers[id]) && !activePlayers[id].isBot) {
+                                activePlayers[id].points = newPts;
+                                activePlayers[id].radius = calculateRadius(newPts);
                             }
                         });
                     }
@@ -437,6 +434,9 @@ function checkCollisions() {
                 }
 
                 if (predator && victim) {
+                    if (isGuestPlayer(victim) && !predator.isBot) {
+                        continue; 
+                    }
                     executeEat(predator, victim);
                 }
             }
@@ -447,9 +447,7 @@ function checkCollisions() {
 function executeEat(predator, victim) {
     const delta = 1;
 
-    if (isGuestPlayer(predator) && !predator.isBot) {
-        predator.points = (predator.points || 0) + delta;
-        predator.radius = calculateRadius(predator.points);
+    if (isGuestPlayer(predator)) {
         incentivePool += delta; 
         checkIncentivePool();   
     } else if (!predator.isBot) {
@@ -605,8 +603,7 @@ setInterval(() => {
         activePlayers,
         standLocations: STAND_LOCATIONS,
         standTotals: getStandTotals(),
-        incentivePool: incentivePool,
-        defaultGuestPoints: defaultGuestPoints
+        incentivePool: incentivePool
     });
 
     wss.clients.forEach(client => {

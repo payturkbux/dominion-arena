@@ -39,11 +39,73 @@
             <p class="text-xs text-gray-300 leading-relaxed">اختر علم الدولة التي تريد تمثيلها والمنافسة باسمها في الساحة الكبرى:</p>
 
             <select id="countrySelectDropdown" class="w-full px-4 py-3.5 bg-gray-900 border border-cyan-500/40 rounded-2xl text-white text-sm font-bold focus:outline-none focus:border-cyan-400 transition cursor-pointer">
+                <!-- يُملأ ديناميكياً بأحدث الأعلام والرموز -->
             </select>
 
             <button onclick="confirmCountryAndStart()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold py-3.5 rounded-2xl text-sm shadow-xl active:scale-95 transition">
                 🚀 دخول الساحة الآن
             </button>
+        </div>
+    </div>
+
+    <!-- لوحة التحكم الإدارية (Admin Panel Dashboard) -->
+    <div id="adminModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl p-4 overflow-y-auto">
+        <div class="glass-hud p-6 rounded-3xl w-full max-w-4xl border border-amber-500/50 shadow-2xl space-y-6">
+            <div class="flex justify-between items-center border-b border-amber-500/30 pb-4">
+                <div class="flex items-center gap-2">
+                    <span class="text-2xl">⚙️</span>
+                    <h2 class="text-xl font-black text-amber-400">لوحة التحكم الإدارية بالساحة</h2>
+                </div>
+                <button onclick="toggleAdminDashboard()" class="text-gray-400 hover:text-white font-bold text-lg">✕</button>
+            </div>
+
+            <!-- بطاقات الإحصائيات -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                <div class="bg-white/5 p-3 rounded-2xl border border-white/10">
+                    <div class="text-xs text-gray-400 font-bold">اللاعبون النشطون</div>
+                    <div id="admActivePlayers" class="text-xl font-black text-cyan-400 font-mono">0</div>
+                </div>
+                <div class="bg-white/5 p-3 rounded-2xl border border-white/10">
+                    <div class="text-xs text-gray-400 font-bold">عدد البوتات</div>
+                    <div id="admBotCount" class="text-xl font-black text-emerald-400 font-mono">0</div>
+                </div>
+                <div class="bg-white/5 p-3 rounded-2xl border border-white/10">
+                    <div class="text-xs text-gray-400 font-bold">نقاط الزوار الحالية</div>
+                    <div id="admGuestPoints" class="text-xl font-black text-amber-400 font-mono">0</div>
+                </div>
+                <div class="bg-white/5 p-3 rounded-2xl border border-white/10">
+                    <div class="text-xs text-gray-400 font-bold">المدرجات النشطة</div>
+                    <div id="admStandsCount" class="text-xl font-black text-purple-400 font-mono">20</div>
+                </div>
+            </div>
+
+            <!-- جدول المدرجات والدول -->
+            <div class="overflow-x-auto max-h-60 rounded-xl border border-white/10">
+                <table class="w-full text-xs text-right">
+                    <thead class="bg-amber-500/20 text-amber-300 font-bold">
+                        <tr>
+                            <th class="p-3">العلم / الرمز</th>
+                            <th class="p-3">اسم الدولة</th>
+                            <th class="p-3">كود الدولة</th>
+                            <th class="p-3">نقاط المدرج الكلية</th>
+                            <th class="p-3">اللاعبين بالساحة</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admCountriesTable" class="divide-y divide-white/5">
+                        <!-- تُملأ البيانات ديناميكياً -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- التحكم بالبوتات والتحفيز -->
+            <div class="flex flex-wrap gap-3 pt-2">
+                <button onclick="adminTriggerAction('SPAWN_BOT')" class="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2.5 rounded-xl text-xs transition">
+                    🤖 إضافة بوت للساحة
+                </button>
+                <button onclick="adminTriggerAction('CLEAR_BOTS')" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-2.5 rounded-xl text-xs transition">
+                    🗑️ طرد كل البوتات
+                </button>
+            </div>
         </div>
     </div>
 
@@ -69,11 +131,15 @@
         </div>
     </header>
 
-    <!-- الأزرار العلوية -->
+    <!-- الأزرار العلوية (تسجيل، لوحة التحكم) -->
     <div class="absolute top-4 left-4 z-30 flex gap-2">
         <button id="authBtn" onclick="openLoginModal()" class="glass-hud px-3 py-2 rounded-xl flex items-center gap-1.5 border border-cyan-500/40 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition shadow-2xl">
             <span id="authBtnIcon">🔑</span>
             <span id="authBtnText" class="hidden sm:inline">تسجيل الدخول</span>
+        </button>
+        <button onclick="toggleAdminDashboard()" class="glass-hud px-3 py-2 rounded-xl flex items-center gap-1.5 border border-amber-500/40 text-xs font-bold text-amber-300 hover:bg-amber-500/20 active:scale-95 transition shadow-2xl">
+            <span>⚙️</span>
+            <span class="hidden sm:inline">لوحة التحكم</span>
         </button>
         <button id="logoutBtn" onclick="submitLogout()" class="hidden glass-hud px-2.5 py-2 rounded-xl flex items-center gap-1 border border-red-500/40 text-xs font-bold text-red-400 hover:bg-red-500/20 active:scale-95 transition shadow-2xl">
             <span>🚪</span>
@@ -205,6 +271,19 @@
         }
     }
 
+    function toggleAdminDashboard() {
+        const adm = document.getElementById('adminModal');
+        adm.classList.toggle('hidden');
+    }
+
+    function adminTriggerAction(action) {
+        const adminKey = localStorage.getItem('dominion_admin_secret') || "MY_SECURE_ADMIN_KEY_123";
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'ADMIN_ACTION', action, adminKey }));
+            showNotification("تم إرسال الأمر الإداري!", "success");
+        }
+    }
+
     const canvas = document.getElementById('worldCanvas');
     const ctx = canvas.getContext('2d');
 
@@ -271,7 +350,7 @@
                         Object.keys(data.activePlayers || {}).forEach(id => {
                             const pData = data.activePlayers[id];
                             if (!activePlayers[id]) {
-                                activePlayers[id] = { ...pData, x: pData.x, y: pData.y, targetX: pData.x, targetY: pData.y };
+                                activePlayers[id] = { ...pData, x: pData.x, y: pData.y, targetX: pData.x, targetY: pData.y, radius: calculateRadius(pData.points) };
                             } else {
                                 activePlayers[id].targetX = pData.x;
                                 activePlayers[id].targetY = pData.y;
@@ -297,6 +376,7 @@
                         }
 
                         updateLeaderboard();
+                        updateAdminUI(data);
                     } else if (data.type === 'EATEN') {
                         document.getElementById('respawnOverlay').classList.remove('hidden');
                         showNotification(`تم ابتلاعك بواسطة ${data.eatenBy}`, 'error');
@@ -307,6 +387,39 @@
             socket.onclose = () => setTimeout(setupWebSocket, 3000);
         } catch(e) {
             console.error("خطأ الاتصال بالسيرفر:", e);
+        }
+    }
+
+    function updateAdminUI(syncData) {
+        const players = Object.values(syncData.activePlayers || {});
+        const bots = players.filter(p => p.isBot);
+        const guests = players.filter(p => String(p.id).startsWith('guest_'));
+        
+        const actEl = document.getElementById('admActivePlayers');
+        const botEl = document.getElementById('admBotCount');
+        const gstEl = document.getElementById('admGuestPoints');
+        const table = document.getElementById('admCountriesTable');
+
+        if (actEl) actEl.innerText = players.length;
+        if (botEl) botEl.innerText = bots.length;
+        if (gstEl) gstEl.innerText = guests.reduce((acc, g) => acc + (g.points || 0), 0);
+
+        if (table && syncData.standTotals) {
+            table.innerHTML = Object.keys(syncData.standTotals).map(code => {
+                const info = countryLandmarks[code] || { name: code, flag: '🚩' };
+                const totalPts = Number(syncData.standTotals[code] || 0).toLocaleString();
+                const activeInCountry = players.filter(p => p.country?.code === code).length;
+
+                return `
+                    <tr class="hover:bg-white/5 transition">
+                        <td class="p-3 text-lg">${info.flag}</td>
+                        <td class="p-3 font-bold text-white">${info.name}</td>
+                        <td class="p-3 font-mono text-cyan-400">${code}</td>
+                        <td class="p-3 font-mono font-bold text-amber-400">${totalPts} $</td>
+                        <td class="p-3 font-mono text-emerald-400">${activeInCountry}</td>
+                    </tr>
+                `;
+            }).join('');
         }
     }
 
@@ -386,7 +499,7 @@
     }
 
     window.addEventListener('wheel', (e) => {
-        if (e.target.closest('#toastContainer, #leaderboardSidebar, #loginModal, #countrySelectModal, #respawnOverlay')) return;
+        if (e.target.closest('#toastContainer, #leaderboardSidebar, #loginModal, #countrySelectModal, #respawnOverlay, #adminModal')) return;
         e.preventDefault();
         const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
         camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.targetZoom * zoomFactor));
@@ -406,7 +519,7 @@
     }
 
     window.addEventListener('mousemove', (e) => {
-        if (e.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
+        if (e.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal, #adminModal')) return;
         sendTarget(e.clientX, e.clientY);
     });
 
