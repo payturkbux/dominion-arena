@@ -203,8 +203,18 @@
 
     let screenWidth, screenHeight;
     function resize() {
-        screenWidth = canvas.width = window.innerWidth;
-        screenHeight = canvas.height = window.innerHeight;
+        const dpr = window.devicePixelRatio || 1;
+        screenWidth = window.innerWidth;
+        screenHeight = window.innerHeight;
+
+        canvas.width = screenWidth * dpr;
+        canvas.height = screenHeight * dpr;
+
+        canvas.style.width = screenWidth + 'px';
+        canvas.style.height = screenHeight + 'px';
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
     }
     window.addEventListener('resize', resize);
     resize();
@@ -416,6 +426,11 @@
                 e.touches[0].clientX - e.touches[1].clientX,
                 e.touches[0].clientY - e.touches[1].clientY
             );
+        } else if (e.touches.length === 1) {
+            const touch = e.touches[0];
+            if (!touch.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) {
+                sendTarget(touch.clientX, touch.clientY);
+            }
         }
     }, { passive: true });
 
@@ -430,8 +445,13 @@
                 camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.targetZoom * (scale > 1 ? 1.03 : 0.97)));
                 touchStartDist = currentDist;
             }
+        } else if (e.touches.length === 1) {
+            const touch = e.touches[0];
+            if (touch.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
+            e.preventDefault();
+            sendTarget(touch.clientX, touch.clientY);
         }
-    }, { passive: true });
+    }, { passive: false });
 
     function sendTarget(clientX, clientY) {
         const me = activePlayers[currentUserId];
@@ -456,13 +476,6 @@
         if (e.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
         sendTarget(e.clientX, e.clientY);
     });
-
-    window.addEventListener('touchmove', (e) => {
-        if (e.touches.length === 1) {
-            if (e.touches[0].target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
-            sendTarget(e.touches[0].clientX, e.touches[0].clientY);
-        }
-    }, { passive: true });
 
     function updateLeaderboard() {
         const listEl = document.getElementById('leaderboardList');
@@ -657,6 +670,7 @@
     function render() {
         updatePhysics();
 
+        const dpr = window.devicePixelRatio || 1;
         const me = activePlayers[currentUserId] || standVault[currentUserId];
         
         if (me) {
@@ -666,8 +680,10 @@
 
         camera.zoom += (camera.targetZoom - camera.zoom) * 0.1;
 
-        ctx.clearRect(0, 0, screenWidth, screenHeight);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.save();
+        
+        ctx.scale(dpr, dpr);
         ctx.translate(screenWidth / 2, screenHeight / 2);
         ctx.scale(camera.zoom, camera.zoom);
         ctx.translate(-camera.x, -camera.y);

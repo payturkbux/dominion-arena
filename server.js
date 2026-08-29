@@ -58,7 +58,7 @@ function getBotMoveSpeed(radius) {
 }
 
 function getPlayerSpeedFactor(radius) {
-    return Math.max(0.008, 0.025 - (radius / 8000));
+    return Math.max(0.04, 0.12 - (radius / 6000));
 }
 
 function getCountryInfo(code) {
@@ -361,10 +361,21 @@ function checkCollisions() {
             const minOverlapDist = maxRadius * 0.5; 
             
             if (distance < minOverlapDist) {
+                let predator = null;
+                let victim = null;
+
                 if ((p1.points || 0) > (p2.points || 0)) {
-                    executeEat(p1, p2);
+                    predator = p1; victim = p2;
                 } else if ((p2.points || 0) > (p1.points || 0)) {
-                    executeEat(p2, p1);
+                    predator = p2; victim = p1;
+                }
+
+                if (predator && victim) {
+                    // 🛡️ حماية الزائر: إذا كانت الضحية زائراً والمفترس ليس بوتاً، يتم إلغاء الابتلاع
+                    if (isGuestPlayer(victim) && !predator.isBot) {
+                        continue; 
+                    }
+                    executeEat(predator, victim);
                 }
             }
         }
