@@ -79,7 +79,6 @@ async function loadOfflinePlayersToStands() {
     }
 }
 
-// دالة لتحديث الرصيد في Supabase مباشرة عند الابتلاع
 async function syncUserPointsToDB(userId, newPoints) {
     if (!supabase || !userId || userId.startsWith('guest_')) return;
     try {
@@ -143,7 +142,6 @@ wss.on('connection', async (ws, req) => {
         try {
             const data = JSON.parse(message);
 
-            // عند رغبة اللاعب المبتلع بالعودة إلى الميدان
             if (data.type === 'REENTER_ARENA') {
                 if (standVault[socketId]) {
                     let p = standVault[socketId];
@@ -182,58 +180,80 @@ wss.on('connection', async (ws, req) => {
     });
 });
 
-// خوارزمية الابتلاع والمواجهة في الميدان
+// معالجة الابتلاع والارتداد عند التصادم
 function checkCollisions() {
     const players = Object.values(activePlayers);
     
     for (let i = 0; i < players.length; i++) {
-        for (let j = 0; j < players.length; j++) {
-            if (i === j) continue;
-
+        for (let j = i + 1; j < players.length; j++) {
             const p1 = players[i];
             const p2 = players[j];
 
             if (!p1 || !p2) continue;
 
-            const dx = p1.x - p2.x;
-            const dy = p1.y - p2.y;
-            const distance = Math.hypot(dx, dy);
+            const dx = p2.x - p1.x;
+            const dy = p2.y - p1.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            const minDistance = p1.radius + p2.radius;
 
-            // الشرط: أن تكون الكرة 1 أكبر حسائباً بـ 1.15 من الكرة 2 والمسافة بين المركزين أقرب من نصف قطر الكبيرة
-            if (p1.radius > p2.radius * 1.15 && distance < p1.radius) {
-                
-                // 1. زيادة الكبيرة بنقطة واحدة
-                p1.points += 1;
-                p1.radius = calculateRadius(p1.points);
-                syncUserPointsToDB(p1.id, p1.points);
+            if (distance < minDistance) {
+                // 1. حالة الابتلاع: كرة p1 أكبر بـ 1.15 ضعف وتغطي مركز p2
+                if (p1.radius > p2.radius * 1.15 && distance < p1.radius) {
+                    executeEat(p1, p2);
+                } 
+                // 2. حالة الابتلاع العكسي: كرة p2 أكبر بـ 1.15 ضعف وتغطي مركز p1
+                else if (p2.radius > p1.radius * 1.15 && distance < p2.radius) {
+                    executeEat(p2, p1);
+                } 
+                // 3. حالة التصادم والارتداد الفيزيائي للأحجام المتقاربة
+                else {
+                    const overlap = minDistance - distance;
+                    const nx = dx / distance;
+                    const ny = dy / distance;
 
-                // 2. خفض نقطة من الصغيرة
-                p2.points = Math.max(0, p2.points - 1);
-                p2.radius = calculateRadius(p2.points);
-                syncUserPointsToDB(p2.id, p2.points);
+                    p1.x -= nx * (overlap / 2);
+                    p1.y -= ny * (overlap / 2);
+                    p2.x += nx * (overlap / 2);
+                    p2.y += ny * (overlap / 2);
 
-                // 3. طرد الكرة الصغيرة من الميدان إلى المدرج
-                delete activePlayers[p2.id];
-                p2.inStand = true;
-
-                const stand = STAND_LOCATIONS[p2.country?.code] || STAND_LOCATIONS['SY'];
-                p2.x = stand.x + (Math.random() * 200 - 100);
-                p2.y = stand.y + (Math.random() * 100 - 50);
-                standVault[p2.id] = p2;
-
-                // إعلام العميل الصغير بإخراجه وإمكانية الضغط للعودة
-                wss.clients.forEach(client => {
-                    if (client.id === p2.id && client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify({
-                            type: 'EATEN',
-                            eatenBy: p1.name,
-                            remainingPoints: p2.points
-                        }));
-                    }
-                });
+                    const r1 = p1.radius || 35;
+                    const r2 = p2.radius || 35;
+                    p1.x = Math.max(PITCH_BOUNDS.minX + r1, Math.min(PITCH_BOUNDS.maxX - r1, p1.x));
+                    p1.y = Math.max(PITCH_BOUNDS.minY + r1, Math.min(PITCH_BOUNDS.maxY - r1, p1.y));
+                    p2.x = Math.max(PITCH_BOUNDS.minX + r2, Math.min(PITCH_BOUNDS.maxX - r2, p2.x));
+                    p2.y = Math.max(PITCH_BOUNDS.minY + r2, Math.min(PITCH_BOUNDS.maxY - r2, p2.y));
+                }
             }
         }
     }
+}
+
+function executeEat(predator, victim) {
+    predator.points += 1;
+    predator.radius = calculateRadius(predator.points);
+    syncUserPointsToDB(predator.id, predator.points);
+
+    victim.points = Math.max(0, victim.points - 1);
+    victim.radius = calculateRadius(victim.points);
+    syncUserPointsToDB(victim.id, victim.points);
+
+    delete activePlayers[victim.id];
+    victim.inStand = true;
+
+    const stand = STAND_LOCATIONS[victim.country?.code] || STAND_LOCATIONS['SY'];
+    victim.x = stand.x + (Math.random() * 200 - 100);
+    victim.y = stand.y + (Math.random() * 100 - 50);
+    standVault[victim.id] = victim;
+
+    wss.clients.forEach(client => {
+        if (client.id === victim.id && client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+                type: 'EATEN',
+                eatenBy: predator.name,
+                remainingPoints: victim.points
+            }));
+        }
+    });
 }
 
 const pingInterval = setInterval(() => {
@@ -246,9 +266,7 @@ const pingInterval = setInterval(() => {
 
 wss.on('close', () => clearInterval(pingInterval));
 
-// حلقة الفيزياء، الابتلاع والتزامن (30 FPS)
 setInterval(() => {
-    // 1. التحديث الفيزيائي للمواقع
     Object.values(activePlayers).forEach(p => {
         if (typeof p.targetX === 'number' && typeof p.targetY === 'number') {
             const speed = calculateSpeed(p.radius);
@@ -257,10 +275,8 @@ setInterval(() => {
         }
     });
 
-    // 2. فحص ومعالجة عمليات الابتلاع والتصادمات
     checkCollisions();
 
-    // 3. بث الحالة العامة المحدثة
     const payload = JSON.stringify({
         type: 'SYNC',
         activePlayers,
@@ -275,4 +291,4 @@ setInterval(() => {
 }, 1000 / 30);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Agario Arena Server with Eating Logic running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Agario Arena Server with Full Physics running on port ${PORT}`));
