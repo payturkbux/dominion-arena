@@ -19,6 +19,10 @@
             font-family: 'Tajawal', sans-serif;
             background-color: #0c101c;
         }
+        #worldCanvas {
+            touch-action: none;
+            -webkit-tap-highlight-color: transparent;
+        }
         .glass-hud {
             background: rgba(10, 14, 23, 0.85);
             backdrop-filter: blur(20px);
@@ -223,7 +227,6 @@
     let activePlayers = {};
     let standLocations = {};
     let standTotals = {}; 
-    let localTargetPos = { x: centerX, y: centerY };
 
     let currentUserProfile = null;
     let selectedCountryCode = 'SY'; 
@@ -261,7 +264,13 @@
     }
 
     function setupWebSocket() {
-        if (socket) socket.close();
+        if (socket) {
+            socket.onopen = null;
+            socket.onmessage = null;
+            socket.onclose = null;
+            socket.onerror = null;
+            socket.close();
+        }
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}?userId=${currentUserId}&country=${selectedCountryCode}`;
         
@@ -281,14 +290,19 @@
                             if (!activePlayers[id]) {
                                 activePlayers[id] = { ...pData, targetX: pData.x, targetY: pData.y };
                             } else {
-                                activePlayers[id].x = pData.x;
-                                activePlayers[id].y = pData.y;
-                                activePlayers[id].targetX = pData.targetX !== undefined ? pData.targetX : pData.x;
-                                activePlayers[id].targetY = pData.targetY !== undefined ? pData.targetY : pData.y;
-                                activePlayers[id].points = pData.points;
-                                activePlayers[id].radius = calculateRadius(pData.points);
-                                activePlayers[id].isProtected = pData.isProtected;
-                                activePlayers[id].protectedUntil = pData.protectedUntil;
+                                if (id === currentUserId) {
+                                    activePlayers[id].points = pData.points;
+                                    activePlayers[id].radius = calculateRadius(pData.points);
+                                    activePlayers[id].isProtected = pData.isProtected;
+                                    activePlayers[id].protectedUntil = pData.protectedUntil;
+                                } else {
+                                    activePlayers[id].targetX = pData.x;
+                                    activePlayers[id].targetY = pData.y;
+                                    activePlayers[id].points = pData.points;
+                                    activePlayers[id].radius = calculateRadius(pData.points);
+                                    activePlayers[id].isProtected = pData.isProtected;
+                                    activePlayers[id].protectedUntil = pData.protectedUntil;
+                                }
                             }
                         });
 
@@ -378,12 +392,15 @@
         try {
             const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
             if (!error && data?.user) {
-                delete activePlayers[currentUserId];
+                const oldId = currentUserId;
                 currentUserId = data.user.id;
                 localStorage.setItem('dominion_user_id', currentUserId);
+                
                 await fetchUserProfile(currentUserId);
                 showNotification("تم تسجيل الدخول بنجاح!", "success");
                 closeLoginModal();
+                
+                delete activePlayers[oldId];
                 setupWebSocket();
             } else {
                 errorEl.innerText = "البيانات المدخلة غير صحيحة";
@@ -394,11 +411,12 @@
 
     async function submitLogout() {
         if (supabaseClient) await supabaseClient.auth.signOut();
-        delete activePlayers[currentUserId];
+        const oldId = currentUserId;
         localStorage.removeItem('dominion_user_id');
         currentUserId = `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
         currentUserProfile = null;
         updateAuthUI();
+        delete activePlayers[oldId];
         setupWebSocket();
     }
 
@@ -410,6 +428,8 @@
     }, { passive: false });
 
     let touchStartDist = 0;
+    let lastTouchSendTime = 0;
+
     window.addEventListener('touchstart', (e) => {
         if (e.touches.length === 2) {
             touchStartDist = Math.hypot(
@@ -438,8 +458,13 @@
         } else if (e.touches.length === 1) {
             const touch = e.touches[0];
             if (touch.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
-            e.preventDefault();
-            sendTarget(touch.clientX, touch.clientY);
+            if (e.cancelable) e.preventDefault();
+
+            const now = Date.now();
+            if (now - lastTouchSendTime > 30) {
+                sendTarget(touch.clientX, touch.clientY);
+                lastTouchSendTime = now;
+            }
         }
     }, { passive: false });
 
@@ -452,6 +477,9 @@
 
         const targetX = Math.max(PITCH_BOUNDS.minX, Math.min(PITCH_BOUNDS.maxX, worldX));
         const targetY = Math.max(PITCH_BOUNDS.minY, Math.min(PITCH_BOUNDS.maxY, worldY));
+
+        me.x = targetX;
+        me.y = targetY;
 
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({
@@ -495,7 +523,6 @@
         }).join('');
     }
 
-    // 🏆 إظهار المدرجات ككتلة إجمالية فقط وبدون عرض أي كرات غير نشطة
     function drawStands() {
         if (!standLocations) return;
 
@@ -662,6 +689,14 @@
         updatePhysics();
 
         const dpr = window.devicePixelRatio || 1;
+        
+        Object.values(activePlayers).forEach(p => {
+            if (p.id !== currentUserId && p.targetX !== undefined && p.targetY !== undefined) {
+                p.x += (p.targetX - p.x) * 0.25;
+                p.y += (p.targetY - p.y) * 0.25;
+            }
+        });
+
         const me = activePlayers[currentUserId];
         
         if (me) {
@@ -683,7 +718,6 @@
         drawStands();
         drawEatEffects();
 
-        // 🎯 رسم الكرات النشطة فقط في الساحة
         Object.values(activePlayers).forEach(p => drawOrb(p));
 
         ctx.restore();
