@@ -131,6 +131,14 @@
 
     let staticUsers = [];
 
+    // دالة لحساب حجم الكرة بناءً على قيمة الرصيد
+    function calculateRadius(points) {
+        const base = 35;
+        const val = Math.max(0, Number(points) || 0);
+        const dynamicSize = Math.log10(val + 1) * 15;
+        return Math.min(120, Math.max(base, base + dynamicSize));
+    }
+
     async function loadRealUsersFromDB() {
         if (!supabaseClient) return;
 
@@ -148,7 +156,7 @@
                         points: balanceVal,
                         tier: u.tier || "Bronze",
                         country: { code: "SY", flag: "🇸🇾" },
-                        radius: 40,
+                        radius: calculateRadius(balanceVal),
                         x: 1200 + (index % 12) * 420,
                         y: 2200 + Math.floor(index / 12) * 320
                     };
@@ -200,13 +208,14 @@
         const myKey = selfId || currentUserId;
         const balanceVal = Number(currentUserProfile.points_balance || 0);
         const nameVal = currentUserProfile.display_name || currentUserProfile.username || 'أنا';
+        const dynamicRadius = calculateRadius(balanceVal);
 
         if (!activePlayers[myKey]) {
             activePlayers[myKey] = {
                 id: myKey,
                 x: 3600,
                 y: 3700,
-                radius: 40,
+                radius: dynamicRadius,
                 points: balanceVal,
                 name: nameVal,
                 tier: currentUserProfile.tier || 'Bronze',
@@ -215,6 +224,7 @@
         } else {
             activePlayers[myKey].points = balanceVal;
             activePlayers[myKey].name = nameVal;
+            activePlayers[myKey].radius = dynamicRadius;
             activePlayers[myKey].tier = currentUserProfile.tier || activePlayers[myKey].tier;
         }
 
@@ -222,6 +232,7 @@
         if (staticIndex !== -1) {
             staticUsers[staticIndex].points = balanceVal;
             staticUsers[staticIndex].name = nameVal;
+            staticUsers[staticIndex].radius = dynamicRadius;
         }
     }
 
@@ -246,13 +257,6 @@
                     dynamicStands = data.dynamicStands || {};
                     
                     syncMyOrbWithProfile();
-
-                    const myKey = selfId || userId;
-                    const myOrb = activePlayers[myKey] || standVault[myKey];
-                    if (myOrb) {
-                        camera.x += (myOrb.x - camera.x) * 0.1;
-                        camera.y += (myOrb.y - camera.y) * 0.1;
-                    }
                     updateLeaderboard();
                 }
             };
@@ -381,7 +385,11 @@
 
     function sendTargetPosition(clientX, clientY) {
         const targetPos = getWorldCoordinates(clientX, clientY);
-        const boundedPos = clampToPitch(targetPos.x, targetPos.y, 40);
+        const myKey = selfId || currentUserId;
+        const myOrb = activePlayers[myKey] || standVault[myKey];
+        const r = myOrb ? (myOrb.radius || 40) : 40;
+        
+        const boundedPos = clampToPitch(targetPos.x, targetPos.y, r);
 
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({
@@ -390,7 +398,6 @@
                 y: boundedPos.y
             }));
         } else {
-            const myKey = selfId || currentUserId;
             let targetOrb = activePlayers[myKey] || standVault[myKey];
             if (!targetOrb) {
                 syncMyOrbWithProfile();
@@ -517,7 +524,8 @@
         ctx.save();
         ctx.translate(p.x, p.y);
 
-        const radius = p.radius || 40;
+        // نصف القطر يتفاعل ديناميكياً مع الرصيد
+        const radius = p.radius || calculateRadius(p.points);
         const countryCode = (p.country && p.country.code) ? p.country.code : "SY";
         const img = monumentImages[countryCode];
         const themeColor = countryLandmarks[countryCode]?.color || "#00f5ff";
@@ -543,7 +551,9 @@
         ctx.fillStyle = "#ffffff";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        const fontSize = 12;
+        
+        // تعديل حجم الخط بتناسب مع حجم الكرة
+        const fontSize = Math.max(12, radius * 0.3);
         ctx.font = `bold ${fontSize}px 'Tajawal'`;
         
         const flag = (p.country && p.country.flag) ? p.country.flag : '';
@@ -560,7 +570,16 @@
     }
 
     function render() {
+        // سلاسة الزوم
         camera.zoom += (camera.targetZoom - camera.zoom) * 0.1;
+
+        // تتبع الكاميرا للكرة الخاصة بالمستخدم أفقياً وعمودياً باستمرار
+        const myKey = selfId || currentUserId;
+        const myOrb = activePlayers[myKey] || standVault[myKey];
+        if (myOrb) {
+            camera.x += (myOrb.x - camera.x) * 0.1;
+            camera.y += (myOrb.y - camera.y) * 0.1;
+        }
 
         ctx.clearRect(0, 0, screenWidth, screenHeight);
         ctx.save();
