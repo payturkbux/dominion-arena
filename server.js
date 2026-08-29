@@ -54,10 +54,10 @@ function calculateRadius(points) {
     return Math.min(1200, Math.max(60, Math.round(calculatedRadius)));
 }
 
-// 🐌 تقليل السرعة لتكون سلسة وثقيلة (وتم خفض سرعة الحركة العامة)
+// 🐌 تقليل السرعة لتكون سلسة وثقيلة
 function calculateSpeed(radius, isBot = false) {
     const baseSpeed = Math.max(0.008, 0.025 - (radius / 8000));
-    return isBot ? baseSpeed * 0.45 : baseSpeed; // 🐢 تخفيض سرعة البوتات بنسبة 55% لإيقاف سرعتها الزائدة
+    return isBot ? baseSpeed * 0.45 : baseSpeed;
 }
 
 function getCountryInfo(code) {
@@ -73,7 +73,6 @@ function isGuestPlayer(player) {
     return !player || player.id.startsWith('guest_');
 }
 
-// 📐 حساب موقع متساوٍ ومحدد داخل حدود المدرج المعني خلف الحواف
 function getRandomOffPitchPosition(countryCode) {
     const stand = STAND_LOCATIONS[countryCode] || STAND_LOCATIONS['SY'];
     
@@ -102,7 +101,7 @@ function spawnBot(botId) {
     const randomName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
     const randomCountry = COUNTRIES[Math.floor(Math.random() * COUNTRIES.length)];
     
-    const randomInitialPoints = Math.floor(Math.random() * 25);
+    const randomInitialPoints = Math.floor(Math.random() * 15);
     const radius = calculateRadius(randomInitialPoints);
     const pos = getRandomOnPitchPosition(radius);
 
@@ -319,24 +318,24 @@ function checkCollisions() {
             const dy = p2.y - p1.y;
             const distance = Math.hypot(dx, dy) || 1;
 
-            if (distance < (Math.max(p1.radius, p2.radius) * 0.45)) {
+            // 🎯 تم تعديل شرط المسافة للتلامس الطبيعي (0.75 من نصف القطر الأكبر)
+            const maxRadius = Math.max(p1.radius, p2.radius);
+            if (distance < maxRadius * 0.75) {
                 const p1Guest = isGuestPlayer(p1);
                 const p2Guest = isGuestPlayer(p2);
 
-                // 🌟 استثناء الزائر: يستطيع ابتلاع أي كرة مهما كان حجمها
+                // 🌟 الزائر يبتلع أي لاعب/بوت فوراً
                 if (p1Guest && !p2Guest) {
                     executeEat(p1, p2);
                 } 
                 else if (p2Guest && !p1Guest) {
                     executeEat(p2, p1);
                 }
-                // ⚔️ الشروط الاعتيادية بين بقية اللاعبين والبوتات (فارق حجم 3%)
-                else if (p1.radius > p2.radius * 1.03) {
-                    if (p2.isBot && (p2.eatenPool || 0) < 2) continue;
+                // ⚔️ الابتلاع العادي: الكرة الأكبر حجماً تبتلع الأصغر فوراً
+                else if (p1.radius > p2.radius) {
                     executeEat(p1, p2);
                 } 
-                else if (p2.radius > p1.radius * 1.03) {
-                    if (p1.isBot && (p1.eatenPool || 0) < 2) continue;
+                else if (p2.radius > p1.radius) {
                     executeEat(p2, p1);
                 }
             }
@@ -345,7 +344,6 @@ function checkCollisions() {
 }
 
 function executeEat(predator, victim) {
-    // 1. حساب إضافة النقاط للمفترس
     if (predator.isBot) {
         predator.eatenPool = (predator.eatenPool || 0) + 1;
         predator.points += 2;
@@ -380,17 +378,14 @@ function executeEat(predator, victim) {
         updatePointsSafely(predator.id, 1);
     }
 
-    // 2. خصم النقاط ومعالجة الضحية بشكل صحيح وتحديث Supabase
     if (victim.isBot) {
         const botId = victim.id;
         delete activePlayers[botId];
         setTimeout(() => spawnBot(botId), 3000); 
     } else {
-        // 🩸 الخصم المباشر من نقاط الضحية وتحديث قاعدة البيانات فوراً
         victim.points = Math.max(0, victim.points - 1);
         victim.radius = calculateRadius(victim.points);
 
-        // ⚠️ تحديث رصيد الضحية فوراً في Supabase
         updatePointsSafely(victim.id, -1);
 
         delete activePlayers[victim.id];
@@ -404,7 +399,6 @@ function executeEat(predator, victim) {
 
         standVault[victim.id] = victim;
 
-        // إرسال إشعار الابتلاع المباشر بالرصيد المتبقي
         wss.clients.forEach(client => {
             if (client.id === victim.id && client.readyState === WebSocket.OPEN) {
                 client.send(JSON.stringify({
@@ -421,7 +415,6 @@ function executeEat(predator, victim) {
 setInterval(() => {
     Object.values(activePlayers).forEach(p => {
         if (p.isBot) {
-            // 🤖 تبطيء وتنعيم توجيه البوتات لتجنب القفزات السريعة
             if (Math.random() < 0.008 || Math.hypot(p.targetX - p.x, p.targetY - p.y) < 150) {
                 const target = getRandomOnPitchPosition(p.radius);
                 p.targetX = target.x;
@@ -442,7 +435,7 @@ setInterval(() => {
 
             const r = p.radius || 60;
             p.x = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, p.x));
-            p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, p.y));
+            p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxX - r, p.y));
         }
     });
 
