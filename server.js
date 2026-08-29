@@ -13,46 +13,42 @@ app.use(express.static('public'));
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
+// كلمة سر لوحة التحكم الإدارية (تُجلب من البيئة أو تستخدم القيمة الافتراضية)
+const ADMIN_SECRET = process.env.ADMIN_SECRET || "MY_SECURE_ADMIN_KEY_123";
+
 let supabase = null;
 if (SUPABASE_URL && SUPABASE_KEY) {
     supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
-// حدود الملعب بعد مضاعفتها 10 أضعاف
 const PITCH_BOUNDS = { minX: 0, maxX: 140000, minY: 0, maxY: 80000 };
 
 let incentivePool = 0; 
 let botCounter = 0;
 
-// المدرجات المربعة الـ 20 المحيطة بكامل الميدان (حجم موحد 20,000)
 const STAND_LOCATIONS = {
-    // الجزء العلوي (شمال)
     "SY": { x: 15000,  y: -12000, size: 20000, edge: 'TOP' },
     "SA": { x: 42000,  y: -12000, size: 20000, edge: 'TOP' },
     "TR": { x: 70000,  y: -12000, size: 20000, edge: 'TOP' },
     "EG": { x: 98000,  y: -12000, size: 20000, edge: 'TOP' },
     "AE": { x: 125000, y: -12000, size: 20000, edge: 'TOP' },
 
-    // الجزء السفلي (جنوب)
     "QA": { x: 15000,  y: 92000,  size: 20000, edge: 'BOTTOM' },
     "KW": { x: 42000,  y: 92000,  size: 20000, edge: 'BOTTOM' },
     "IQ": { x: 70000,  y: 92000,  size: 20000, edge: 'BOTTOM' },
     "JO": { x: 98000,  y: 92000,  size: 20000, edge: 'BOTTOM' },
     "LB": { x: 125000, y: 92000,  size: 20000, edge: 'BOTTOM' },
 
-    // الجانب الأيمن (شرق)
     "OM": { x: 152000, y: 5000,   size: 20000, edge: 'RIGHT' },
     "BH": { x: 152000, y: 28000,  size: 20000, edge: 'RIGHT' },
     "MA": { x: 152000, y: 52000,  size: 20000, edge: 'RIGHT' },
     "DZ": { x: 152000, y: 75000,  size: 20000, edge: 'RIGHT' },
 
-    // الجانب الأيسر (غرب)
     "TN": { x: -12000, y: 5000,   size: 20000, edge: 'LEFT' },
     "LY": { x: -12000, y: 28000,  size: 20000, edge: 'LEFT' },
     "SD": { x: -12000, y: 52000,  size: 20000, edge: 'LEFT' },
     "YE": { x: -12000, y: 75000,  size: 20000, edge: 'LEFT' },
 
-    // الأركان العلوية
     "PS": { x: -12000, y: -12000, size: 20000, edge: 'TOP_LEFT' },
     "US": { x: 152000, y: -12000, size: 20000, edge: 'TOP_RIGHT' }
 };
@@ -246,6 +242,11 @@ wss.on('connection', async (ws, req) => {
     const userId = urlParams.get('userId');
     const selectedCountry = urlParams.get('country') || 'SY';
 
+    if (userId === 'admin_dashboard') {
+        ws.id = 'admin_dashboard';
+        return;
+    }
+
     const socketId = (userId && !userId.startsWith('guest_')) 
         ? userId 
         : (userId || ('guest_' + Math.random().toString(36).substr(2, 7)));
@@ -336,7 +337,12 @@ wss.on('connection', async (ws, req) => {
                     current.targetY = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, data.y));
                 }
             } else if (data.type === 'ADMIN_ACTION') {
-                // استقبال أوامر لوحة التحكم الإدارية
+                // 🔒 حماية أوامر لوحة التحكم بالمفتاح السري
+                if (data.adminKey !== ADMIN_SECRET) {
+                    console.warn(`محاولة تنفيذ أمر إداري غير مصرح بها من: ${socketId}`);
+                    return; // إرفاض الطلب فوراً
+                }
+
                 if (data.action === 'SPAWN_BOT') {
                     spawnBotFromPool(50);
                 } else if (data.action === 'CLEAR_BOTS') {
