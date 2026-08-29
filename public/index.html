@@ -505,16 +505,41 @@
         camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.targetZoom * zoomFactor));
     }, { passive: false });
 
+    // ====================================================
+    // 🛠️ النظام المحدث للتحكم بالكرة وإلغاء تراكم الحركة
+    // ====================================================
+    let lastTargetSendTime = 0;
+    let pendingTarget = null;
+    const TARGET_SEND_INTERVAL = 30; // تقنين الإرسال كل 30 ملي ثانية لعدم إغراق الشبكة
+
+    function dispatchTarget() {
+        if (!pendingTarget) return;
+
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ 
+                type: 'TARGET', 
+                x: pendingTarget.x, 
+                y: pendingTarget.y 
+            }));
+            lastTargetSendTime = Date.now();
+            pendingTarget = null; // تفريغ الذاكرة المؤقتة لمنع تراكم الأوامر القديمة
+        }
+    }
+
     function sendTarget(clientX, clientY) {
         const me = activePlayers[currentUserId];
         if (!me) return;
+
         const worldX = me.x + (clientX - screenWidth / 2) / camera.zoom;
         const worldY = me.y + (clientY - screenHeight / 2) / camera.zoom;
         const targetX = Math.max(PITCH_BOUNDS.minX, Math.min(PITCH_BOUNDS.maxX, worldX));
         const targetY = Math.max(PITCH_BOUNDS.minY, Math.min(PITCH_BOUNDS.maxY, worldY));
 
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({ type: 'TARGET', x: targetX, y: targetY }));
+        pendingTarget = { x: targetX, y: targetY };
+
+        const now = Date.now();
+        if (now - lastTargetSendTime >= TARGET_SEND_INTERVAL) {
+            dispatchTarget();
         }
     }
 
@@ -696,8 +721,10 @@
 
         Object.values(activePlayers).forEach(p => {
             if (p.targetX !== undefined && p.targetY !== undefined) {
-                p.x += (p.targetX - p.x) * 0.25;
-                p.y += (p.targetY - p.y) * 0.25;
+                // استخدام معامل تنعيم أعلى للاعب المحلي لزيادة الاستجابة وسرعة الحركة
+                const lerpFactor = (p.id === currentUserId) ? 0.45 : 0.25;
+                p.x += (p.targetX - p.x) * lerpFactor;
+                p.y += (p.targetY - p.y) * lerpFactor;
             }
         });
 
