@@ -109,7 +109,6 @@ async function updatePointsSafely(userId, delta) {
     }
 }
 
-// مزامنة حية خلفية كل 5 ثواني لرصد الإيداعات
 setInterval(async () => {
     if (!supabase) return;
     const activeIds = Object.keys(activePlayers).filter(id => !id.startsWith('guest_'));
@@ -226,7 +225,7 @@ wss.on('connection', async (ws, req) => {
     });
 });
 
-// 🎯 فحص الابتلاع بدون أي ارتداد أو تنافر
+// 🎯 شرط التمحور للابتلاع: السماح بالتداخل التام للكرات حتى يتطابق المركزين
 function checkCollisions() {
     const players = Object.values(activePlayers);
     
@@ -241,12 +240,13 @@ function checkCollisions() {
             const dy = p2.y - p1.y;
             const distance = Math.hypot(dx, dy) || 1;
 
-            // 1. فحص هل p1 يبتلع p2 (إذا كان أسرع/أكبر ولو بفارق بسيط، وتداخل مركز الكرة)
-            if (p1.radius > p2.radius * 1.01 && distance < p1.radius) {
+            // شرط التمحور والابتلاع:
+            // 1. الكرة الأكبر تبتلع الأصغر عندما تقترب المسافة بين مركزيهما إلى ما دون 45% من نصف قطر الكرة الأكبر (المركز فوق المركز تقريباً)
+            if (p1.radius > p2.radius * 1.01 && distance < (p1.radius * 0.45)) {
                 executeEat(p1, p2);
             } 
-            // 2. فحص العكس: هل p2 يبتلع p1
-            else if (p2.radius > p1.radius * 1.01 && distance < p2.radius) {
+            // 2. فحص العكس بالنسبة لـ p2
+            else if (p2.radius > p1.radius * 1.01 && distance < (p2.radius * 0.45)) {
                 executeEat(p2, p1);
             }
         }
@@ -316,4 +316,4 @@ setInterval(() => {
 }, 1000 / 30);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Agario Server Instant Eating Logic running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Agario Server Center-Overlap Eating Logic running on port ${PORT}`));
