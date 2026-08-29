@@ -55,6 +55,10 @@ function getBotMoveSpeed(radius) {
     return Math.max(4, 12 - (radius / 100));
 }
 
+function getPlayerSpeed(radius) {
+    return Math.max(4, 15 - (radius / 50));
+}
+
 function getCountryInfo(code) {
     const data = COUNTRY_DATA[code] || COUNTRY_DATA['SY'];
     return {
@@ -274,13 +278,8 @@ wss.on('connection', async (ws, req) => {
                 const current = activePlayers[socketId];
                 if (current && typeof data.x === 'number' && typeof data.y === 'number') {
                     const r = current.radius || 60;
-                    const validX = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, data.x));
-                    const validY = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, data.y));
-                    
-                    current.x = validX;
-                    current.y = validY;
-                    current.targetX = validX;
-                    current.targetY = validY;
+                    current.targetX = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, data.x));
+                    current.targetY = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, data.y));
                 }
             }
         } catch (e) {
@@ -495,8 +494,19 @@ setInterval(() => {
             p.targetY = p.y;
         } else {
             if (typeof p.targetX === 'number' && typeof p.targetY === 'number') {
-                p.x = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, p.targetX));
-                p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, p.targetY));
+                const dx = p.targetX - p.x;
+                const dy = p.targetY - p.y;
+                const dist = Math.hypot(dx, dy);
+
+                if (dist > 2) {
+                    const playerSpeed = getPlayerSpeed(r);
+                    const moveDist = Math.min(dist, playerSpeed);
+                    p.x += (dx / dist) * moveDist;
+                    p.y += (dy / dist) * moveDist;
+                }
+
+                p.x = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, p.x));
+                p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, p.y));
             }
         }
     });

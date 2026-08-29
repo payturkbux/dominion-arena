@@ -18,10 +18,7 @@
             user-select: none;
             font-family: 'Tajawal', sans-serif;
             background-color: #0c101c;
-        }
-        #worldCanvas {
             touch-action: none;
-            -webkit-tap-highlight-color: transparent;
         }
         .glass-hud {
             background: rgba(10, 14, 23, 0.85);
@@ -264,13 +261,7 @@
     }
 
     function setupWebSocket() {
-        if (socket) {
-            socket.onopen = null;
-            socket.onmessage = null;
-            socket.onclose = null;
-            socket.onerror = null;
-            socket.close();
-        }
+        if (socket) socket.close();
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}?userId=${currentUserId}&country=${selectedCountryCode}`;
         
@@ -288,20 +279,28 @@
                         Object.keys(data.activePlayers || {}).forEach(id => {
                             const pData = data.activePlayers[id];
                             if (!activePlayers[id]) {
-                                activePlayers[id] = { ...pData, targetX: pData.x, targetY: pData.y };
+                                activePlayers[id] = { 
+                                    ...pData, 
+                                    x: pData.x, 
+                                    y: pData.y,
+                                    targetX: pData.targetX !== undefined ? pData.targetX : pData.x, 
+                                    targetY: pData.targetY !== undefined ? pData.targetY : pData.y 
+                                };
                             } else {
-                                if (id === currentUserId) {
-                                    activePlayers[id].points = pData.points;
-                                    activePlayers[id].radius = calculateRadius(pData.points);
-                                    activePlayers[id].isProtected = pData.isProtected;
-                                    activePlayers[id].protectedUntil = pData.protectedUntil;
-                                } else {
-                                    activePlayers[id].targetX = pData.x;
-                                    activePlayers[id].targetY = pData.y;
-                                    activePlayers[id].points = pData.points;
-                                    activePlayers[id].radius = calculateRadius(pData.points);
-                                    activePlayers[id].isProtected = pData.isProtected;
-                                    activePlayers[id].protectedUntil = pData.protectedUntil;
+                                activePlayers[id].serverX = pData.x;
+                                activePlayers[id].serverY = pData.y;
+                                activePlayers[id].targetX = pData.targetX !== undefined ? pData.targetX : pData.x;
+                                activePlayers[id].targetY = pData.targetY !== undefined ? pData.targetY : pData.y;
+                                activePlayers[id].points = pData.points;
+                                activePlayers[id].radius = calculateRadius(pData.points);
+                                activePlayers[id].isProtected = pData.isProtected;
+                                activePlayers[id].protectedUntil = pData.protectedUntil;
+                                activePlayers[id].name = pData.name;
+                                activePlayers[id].country = pData.country;
+
+                                if (id !== currentUserId) {
+                                    activePlayers[id].x = pData.x;
+                                    activePlayers[id].y = pData.y;
                                 }
                             }
                         });
@@ -350,6 +349,39 @@
                 eatEffects.splice(i, 1);
             }
         }
+
+        Object.keys(activePlayers).forEach(id => {
+            const p = activePlayers[id];
+            if (!p) return;
+
+            if (id === currentUserId) {
+                if (p.targetX !== undefined && p.targetY !== undefined) {
+                    const dx = p.targetX - p.x;
+                    const dy = p.targetY - p.y;
+                    const dist = Math.hypot(dx, dy);
+                    const speed = Math.max(4, 15 - (p.radius / 50));
+
+                    if (dist > 5) {
+                        p.x += (dx / dist) * Math.min(dist, speed);
+                        p.y += (dy / dist) * Math.min(dist, speed);
+                    }
+                }
+                
+                if (p.serverX !== undefined && p.serverY !== undefined) {
+                    const diffX = p.serverX - p.x;
+                    const diffY = p.serverY - p.y;
+                    if (Math.hypot(diffX, diffY) > 150) {
+                        p.x += diffX * 0.1;
+                        p.y += diffY * 0.1;
+                    }
+                }
+            } else {
+                if (p.serverX !== undefined && p.serverY !== undefined) {
+                    p.x += (p.serverX - p.x) * 0.25;
+                    p.y += (p.serverY - p.y) * 0.25;
+                }
+            }
+        });
     }
 
     function updateAuthUI() {
@@ -392,15 +424,12 @@
         try {
             const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
             if (!error && data?.user) {
-                const oldId = currentUserId;
+                delete activePlayers[currentUserId];
                 currentUserId = data.user.id;
                 localStorage.setItem('dominion_user_id', currentUserId);
-                
                 await fetchUserProfile(currentUserId);
                 showNotification("تم تسجيل الدخول بنجاح!", "success");
                 closeLoginModal();
-                
-                delete activePlayers[oldId];
                 setupWebSocket();
             } else {
                 errorEl.innerText = "البيانات المدخلة غير صحيحة";
@@ -411,12 +440,11 @@
 
     async function submitLogout() {
         if (supabaseClient) await supabaseClient.auth.signOut();
-        const oldId = currentUserId;
+        delete activePlayers[currentUserId];
         localStorage.removeItem('dominion_user_id');
         currentUserId = `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
         currentUserProfile = null;
         updateAuthUI();
-        delete activePlayers[oldId];
         setupWebSocket();
     }
 
@@ -428,7 +456,29 @@
     }, { passive: false });
 
     let touchStartDist = 0;
-    let lastTouchSendTime = 0;
+    
+    function processInputPosition(clientX, clientY) {
+        const me = activePlayers[currentUserId];
+        if (!me) return;
+
+        const worldX = camera.x + (clientX - screenWidth / 2) / camera.zoom;
+        const worldY = camera.y + (clientY - screenHeight / 2) / camera.zoom;
+
+        const r = me.radius || 60;
+        const targetX = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, worldX));
+        const targetY = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, worldY));
+
+        me.targetX = targetX;
+        me.targetY = targetY;
+
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({
+                type: 'TARGET',
+                x: targetX,
+                y: targetY
+            }));
+        }
+    }
 
     window.addEventListener('touchstart', (e) => {
         if (e.touches.length === 2) {
@@ -438,8 +488,8 @@
             );
         } else if (e.touches.length === 1) {
             const touch = e.touches[0];
-            if (!touch.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) {
-                sendTarget(touch.clientX, touch.clientY);
+            if (!touch.target.closest('header, aside, button, input, select, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) {
+                processInputPosition(touch.clientX, touch.clientY);
             }
         }
     }, { passive: true });
@@ -457,42 +507,15 @@
             }
         } else if (e.touches.length === 1) {
             const touch = e.touches[0];
-            if (touch.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
+            if (touch.target.closest('header, aside, button, input, select, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
             if (e.cancelable) e.preventDefault();
-
-            const now = Date.now();
-            if (now - lastTouchSendTime > 30) {
-                sendTarget(touch.clientX, touch.clientY);
-                lastTouchSendTime = now;
-            }
+            processInputPosition(touch.clientX, touch.clientY);
         }
     }, { passive: false });
 
-    function sendTarget(clientX, clientY) {
-        const me = activePlayers[currentUserId];
-        if (!me) return;
-
-        const worldX = me.x + (clientX - screenWidth / 2) / camera.zoom;
-        const worldY = me.y + (clientY - screenHeight / 2) / camera.zoom;
-
-        const targetX = Math.max(PITCH_BOUNDS.minX, Math.min(PITCH_BOUNDS.maxX, worldX));
-        const targetY = Math.max(PITCH_BOUNDS.minY, Math.min(PITCH_BOUNDS.maxY, worldY));
-
-        me.x = targetX;
-        me.y = targetY;
-
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                type: 'TARGET',
-                x: targetX,
-                y: targetY
-            }));
-        }
-    }
-
     window.addEventListener('mousemove', (e) => {
-        if (e.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
-        sendTarget(e.clientX, e.clientY);
+        if (e.target.closest('header, aside, button, input, select, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
+        processInputPosition(e.clientX, e.clientY);
     });
 
     function updateLeaderboard() {
@@ -689,19 +712,11 @@
         updatePhysics();
 
         const dpr = window.devicePixelRatio || 1;
-        
-        Object.values(activePlayers).forEach(p => {
-            if (p.id !== currentUserId && p.targetX !== undefined && p.targetY !== undefined) {
-                p.x += (p.targetX - p.x) * 0.25;
-                p.y += (p.targetY - p.y) * 0.25;
-            }
-        });
-
         const me = activePlayers[currentUserId];
         
         if (me) {
-            camera.x += (me.x - camera.x) * 0.1;
-            camera.y += (me.y - camera.y) * 0.1;
+            camera.x += (me.x - camera.x) * 0.15;
+            camera.y += (me.y - camera.y) * 0.15;
         }
 
         camera.zoom += (camera.targetZoom - camera.zoom) * 0.1;
