@@ -204,9 +204,10 @@ wss.on('connection', async (ws, req) => {
     const userId = urlParams.get('userId');
     const selectedCountry = urlParams.get('country') || 'SY';
 
+    // استخدام المعرف المقدم أو إنشاء معرّف محدد ثابت
     const socketId = (userId && !userId.startsWith('guest_')) 
         ? userId 
-        : 'guest_' + Math.random().toString(36).substr(2, 7);
+        : (userId || ('guest_' + Math.random().toString(36).substr(2, 7)));
 
     ws.id = socketId;
 
@@ -217,30 +218,45 @@ wss.on('connection', async (ws, req) => {
     }
 
     const isGuest = socketId.startsWith('guest_');
-    const balance = isGuest ? 10 : Number(profileData?.points_balance || 0);
-    const country = profileData?.country_code || selectedCountry;
-    const initRadius = calculateRadius(balance);
-    const initialSpawn = getRandomOnPitchPosition(initRadius);
+    
+    // إصلاح جوهري: الحفاظ على موقع ومستجدات الكائن إن كان موجوداً مسبقاً لمنع القفز
+    let player = activePlayers[socketId] || standVault[socketId];
 
-    let player = standVault[socketId] || {
-        id: socketId,
-        name: profileData?.display_name || profileData?.username || (isGuest ? `زائر_${socketId.slice(-4)}` : 'لاعب'),
-        points: balance,
-        tier: profileData?.tier || 'Bronze',
-        country: getCountryInfo(country),
-        x: initialSpawn.x,
-        y: initialSpawn.y,
-        radius: initRadius
-    };
+    if (!player) {
+        const balance = isGuest ? 10 : Number(profileData?.points_balance || 0);
+        const country = profileData?.country_code || selectedCountry;
+        const initRadius = calculateRadius(balance);
+        const initialSpawn = getRandomOnPitchPosition(initRadius);
+
+        player = {
+            id: socketId,
+            name: profileData?.display_name || profileData?.username || (isGuest ? `زائر_${socketId.slice(-4)}` : 'لاعب'),
+            points: balance,
+            tier: profileData?.tier || 'Bronze',
+            country: getCountryInfo(country),
+            x: initialSpawn.x,
+            y: initialSpawn.y,
+            targetX: initialSpawn.x,
+            targetY: initialSpawn.y,
+            radius: initRadius,
+            isProtected: true,
+            protectedUntil: Date.now() + 5000
+        };
+    } else {
+        // إذا كان يمتلك موضعاً سابقاً، استخدامه دون القفز لمكان جديد
+        if (typeof player.x !== 'number' || typeof player.y !== 'number') {
+            const initialSpawn = getRandomOnPitchPosition(player.radius || 60);
+            player.x = initialSpawn.x;
+            player.y = initialSpawn.y;
+            player.targetX = initialSpawn.x;
+            player.targetY = initialSpawn.y;
+        }
+    }
 
     delete standVault[socketId];
     player.inStand = false;
     player.isBot = false;
-    player.targetX = player.x;
-    player.targetY = player.y;
-    player.isProtected = true;
-    player.protectedUntil = Date.now() + 5000;
-
+    
     activePlayers[socketId] = player;
 
     ws.send(JSON.stringify({ 
@@ -259,7 +275,7 @@ wss.on('connection', async (ws, req) => {
                     let p = standVault[socketId];
                     delete standVault[socketId];
 
-                    if (isGuestPlayer(p)) p.points = 100;
+                    if (isGuestPlayer(p)) p.points = 10;
                     p.radius = calculateRadius(p.points);
 
                     const spawnPos = getRandomOnPitchPosition(p.radius || 60);
@@ -376,7 +392,7 @@ function executeEat(predator, victim) {
         victim.radius = calculateRadius(victim.points);
     }
 
-    // لا تُحذف الكرة إلا إذا وصلت نقاطها لـ 0 تماماً من قِبل المفترس
+    // لا تُحذف الكرة إلا إذا وصلت نقاطها لـ 0 تماماً
     if (victim.points <= 0) {
         delete activePlayers[victim.id];
         
