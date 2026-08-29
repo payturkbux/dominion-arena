@@ -142,11 +142,14 @@
     let currentUserId = localStorage.getItem('dominion_user_id') || `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
 
     function calculateRadius(points) {
-        const base = 35;
-        const val = Math.max(0, Number(points) || 0);
-        const dynamicSize = Math.log10(val + 1) * 15;
-        return Math.min(120, Math.max(base, base + dynamicSize));
-    }
+    const val = Math.max(0, Number(points) || 0);
+    // معادلة الحجم المطلقة النسبية: القطر الأساسي يبدأ من 30 بكسل
+    // تضمن التدرج البصري بحيث تكون كرة 10,000 أضخم بكثير وبشكل تناسبي مقارنة بـ 1,000
+    const calculatedRadius = 30 + Math.pow(val / 10, 0.55);
+    
+    // حد أدنى لحجم الكرة (30px) وحد أقصى متناسب مع الميدان (600px)
+    return Math.min(600, Math.max(30, calculatedRadius));
+}
 
     const monumentImages = {};
     const countryLandmarks = {
