@@ -9,20 +9,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Tajawal:wght@500;700;900&display=swap" rel="stylesheet"/>
     <style>
         html, body {
-            width: 100%;
-            height: 100%;
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            -webkit-user-select: none;
-            user-select: none;
-            font-family: 'Tajawal', sans-serif;
-            background-color: #0c101c;
+            width: 100%; height: 100%; margin: 0; padding: 0;
+            overflow: hidden; -webkit-user-select: none; user-select: none;
+            font-family: 'Tajawal', sans-serif; background-color: #0c101c;
         }
         .glass-hud {
             background: rgba(10, 14, 23, 0.85);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.12);
         }
         @keyframes flashPop {
@@ -32,16 +25,13 @@
             80% { transform: translate(-50%, 0) scale(1); opacity: 1; }
             100% { transform: translate(-50%, -10px) scale(0.9); opacity: 0; }
         }
-        .flash-toast {
-            animation: flashPop 2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-        }
-        .sidebar-transition {
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
-        }
+        .flash-toast { animation: flashPop 2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .sidebar-transition { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease; }
     </style>
 </head>
 <body class="text-white relative w-screen h-screen select-none overflow-hidden">
 
+    <!-- نافذة اختيار الدولة -->
     <div id="countrySelectModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
         <div class="glass-hud p-6 sm:p-8 rounded-3xl w-full max-w-md border border-cyan-500/50 text-center shadow-2xl space-y-5">
             <div class="text-5xl">🚩</div>
@@ -49,16 +39,73 @@
             <p class="text-xs text-gray-300 leading-relaxed">اختر علم الدولة التي تريد تمثيلها والمنافسة باسمها في الساحة الكبرى:</p>
 
             <select id="countrySelectDropdown" class="w-full px-4 py-3.5 bg-gray-900 border border-cyan-500/40 rounded-2xl text-white text-sm font-bold focus:outline-none focus:border-cyan-400 transition cursor-pointer">
-                <option value="SY">🇸🇾 سوريا (SY)</option>
-                <option value="SA">🇸🇦 السعودية (SA)</option>
-                <option value="TR">🇹🇷 تركيا (TR)</option>
-                <option value="EG">🇪🇬 مصر (EG)</option>
-                <option value="AE">🇦🇪 الإمارات (AE)</option>
+                <!-- يُملأ ديناميكياً بأحدث الأعلام والرموز -->
             </select>
 
             <button onclick="confirmCountryAndStart()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold py-3.5 rounded-2xl text-sm shadow-xl active:scale-95 transition">
                 🚀 دخول الساحة الآن
             </button>
+        </div>
+    </div>
+
+    <!-- لوحة التحكم الإدارية (Admin Panel Dashboard) -->
+    <div id="adminModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-xl p-4 overflow-y-auto">
+        <div class="glass-hud p-6 rounded-3xl w-full max-w-4xl border border-amber-500/50 shadow-2xl space-y-6">
+            <div class="flex justify-between items-center border-b border-amber-500/30 pb-4">
+                <div class="flex items-center gap-2">
+                    <span class="text-2xl">⚙️</span>
+                    <h2 class="text-xl font-black text-amber-400">لوحة التحكم الإدارية بالساحة</h2>
+                </div>
+                <button onclick="toggleAdminDashboard()" class="text-gray-400 hover:text-white font-bold text-lg">✕</button>
+            </div>
+
+            <!-- بطاقات الإحصائيات -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                <div class="bg-white/5 p-3 rounded-2xl border border-white/10">
+                    <div class="text-xs text-gray-400 font-bold">اللاعبون النشطون</div>
+                    <div id="admActivePlayers" class="text-xl font-black text-cyan-400 font-mono">0</div>
+                </div>
+                <div class="bg-white/5 p-3 rounded-2xl border border-white/10">
+                    <div class="text-xs text-gray-400 font-bold">عدد البوتات</div>
+                    <div id="admBotCount" class="text-xl font-black text-emerald-400 font-mono">0</div>
+                </div>
+                <div class="bg-white/5 p-3 rounded-2xl border border-white/10">
+                    <div class="text-xs text-gray-400 font-bold">نقاط الزوار الحالية</div>
+                    <div id="admGuestPoints" class="text-xl font-black text-amber-400 font-mono">0</div>
+                </div>
+                <div class="bg-white/5 p-3 rounded-2xl border border-white/10">
+                    <div class="text-xs text-gray-400 font-bold">المدرجات النشطة</div>
+                    <div id="admStandsCount" class="text-xl font-black text-purple-400 font-mono">20</div>
+                </div>
+            </div>
+
+            <!-- جدول المدرجات والدول -->
+            <div class="overflow-x-auto max-h-60 rounded-xl border border-white/10">
+                <table class="w-full text-xs text-right">
+                    <thead class="bg-amber-500/20 text-amber-300 font-bold">
+                        <tr>
+                            <th class="p-3">العلم / الرمز</th>
+                            <th class="p-3">اسم الدولة</th>
+                            <th class="p-3">كود الدولة</th>
+                            <th class="p-3">نقاط المدرج الكلية</th>
+                            <th class="p-3">اللاعبين بالساحة</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admCountriesTable" class="divide-y divide-white/5">
+                        <!-- تُملأ البيانات ديناميكياً -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- التحكم بالبوتات والتحفيز -->
+            <div class="flex flex-wrap gap-3 pt-2">
+                <button onclick="adminTriggerAction('SPAWN_BOT')" class="flex-1 bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2.5 rounded-xl text-xs transition">
+                    🤖 إضافة بوت للساحة
+                </button>
+                <button onclick="adminTriggerAction('CLEAR_BOTS')" class="flex-1 bg-red-600 hover:bg-red-500 text-white font-bold py-2.5 rounded-xl text-xs transition">
+                    🗑️ طرد كل البوتات
+                </button>
+            </div>
         </div>
     </div>
 
@@ -75,18 +122,24 @@
         </div>
     </div>
 
+    <!-- Header UI -->
     <header class="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 glass-hud px-4 py-2 rounded-2xl shadow-2xl border border-cyan-500/30 max-w-[90vw]">
         <span class="text-xl">🏆</span>
         <div class="truncate">
-            <div id="hudStatusTitle" class="text-[9px] sm:text-[10px] uppercase text-cyan-400 font-bold tracking-widest truncate">الساحة الكبرى - نظام تحفيز الضعفاء</div>
+            <div id="hudStatusTitle" class="text-[9px] sm:text-[10px] uppercase text-cyan-400 font-bold tracking-widest truncate">الساحة الكبرى - نظام المدرجات الـ20</div>
             <div id="hudActionTip" class="text-[11px] font-bold text-emerald-400 truncate">خزان التحفيز: <span id="incentivePoolVal" class="text-amber-400 font-mono">0</span> / 10</div>
         </div>
     </header>
 
+    <!-- الأزرار العلوية (تسجيل، لوحة التحكم) -->
     <div class="absolute top-4 left-4 z-30 flex gap-2">
         <button id="authBtn" onclick="openLoginModal()" class="glass-hud px-3 py-2 rounded-xl flex items-center gap-1.5 border border-cyan-500/40 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition shadow-2xl">
             <span id="authBtnIcon">🔑</span>
             <span id="authBtnText" class="hidden sm:inline">تسجيل الدخول</span>
+        </button>
+        <button onclick="toggleAdminDashboard()" class="glass-hud px-3 py-2 rounded-xl flex items-center gap-1.5 border border-amber-500/40 text-xs font-bold text-amber-300 hover:bg-amber-500/20 active:scale-95 transition shadow-2xl">
+            <span>⚙️</span>
+            <span class="hidden sm:inline">لوحة التحكم</span>
         </button>
         <button id="logoutBtn" onclick="submitLogout()" class="hidden glass-hud px-2.5 py-2 rounded-xl flex items-center gap-1 border border-red-500/40 text-xs font-bold text-red-400 hover:bg-red-500/20 active:scale-95 transition shadow-2xl">
             <span>🚪</span>
@@ -150,28 +203,58 @@
         console.error("Supabase Init Error:", e);
     }
 
+    // قاموس الأعلام والمعالم المحدث لجميع مدرجات الدول الـ20
+    const countryLandmarks = {
+        "SY": { name: "سوريا", flag: "🇸🇾", color: "#00f5ff", url: "https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=400&q=80" },
+        "SA": { name: "السعودية", flag: "🇸🇦", color: "#3bff17", url: "https://images.unsplash.com/photo-1586724237569-f3d0c1dee8c6?auto=format&fit=crop&w=400&q=80" },
+        "TR": { name: "تركيا", flag: "🇹🇷", color: "#ff4b89", url: "https://images.unsplash.com/photo-1541432901042-2d8bd64b4a9b?auto=format&fit=crop&w=400&q=80" },
+        "EG": { name: "مصر", flag: "🇪🇬", color: "#ffb1c3", url: "https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=400&q=80" },
+        "AE": { name: "الإمارات", flag: "🇦🇪", color: "#ffd9e0", url: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=400&q=80" },
+        "QA": { name: "قطر", flag: "🇶🇦", color: "#8a1538", url: "https://images.unsplash.com/photo-1578895210405-907db48a7111?auto=format&fit=crop&w=400&q=80" },
+        "KW": { name: "الكويت", flag: "🇰🇼", color: "#007a3d", url: "https://images.unsplash.com/photo-1578895210405-907db48a7111?auto=format&fit=crop&w=400&q=80" },
+        "IQ": { name: "العراق", flag: "🇮🇶", color: "#ce1126", url: "https://images.unsplash.com/photo-1541432901042-2d8bd64b4a9b?auto=format&fit=crop&w=400&q=80" },
+        "JO": { name: "الأردن", flag: "🇯🇴", color: "#007a3d", url: "https://images.unsplash.com/photo-1586724237569-f3d0c1dee8c6?auto=format&fit=crop&w=400&q=80" },
+        "LB": { name: "لبنان", flag: "🇱🇧", color: "#ee2a35", url: "https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=400&q=80" },
+        "OM": { name: "عُمان", flag: "🇴🇲", color: "#db161b", url: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=400&q=80" },
+        "BH": { name: "البحرين", flag: "🇧🇭", color: "#ce1126", url: "https://images.unsplash.com/photo-1578895210405-907db48a7111?auto=format&fit=crop&w=400&q=80" },
+        "MA": { name: "المغرب", flag: "🇲🇦", color: "#c1272d", url: "https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=400&q=80" },
+        "DZ": { name: "الجزائر", flag: "🇩🇿", color: "#006233", url: "https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=400&q=80" },
+        "TN": { name: "تونس", flag: "🇹🇳", color: "#e70013", url: "https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=400&q=80" },
+        "LY": { name: "ليبيا", flag: "🇱🇾", color: "#239e46", url: "https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=400&q=80" },
+        "SD": { name: "السودان", flag: "🇸🇩", color: "#007229", url: "https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=400&q=80" },
+        "YE": { name: "اليمن", flag: "🇾🇪", color: "#ce1126", url: "https://images.unsplash.com/photo-1586724237569-f3d0c1dee8c6?auto=format&fit=crop&w=400&q=80" },
+        "PS": { name: "فلسطين", flag: "🇵🇸", color: "#000000", url: "https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=400&q=80" },
+        "US": { name: "أمريكا", flag: "🇺🇸", color: "#3c3b6e", url: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=400&q=80" }
+    };
+
+    const monumentImages = {};
+    Object.keys(countryLandmarks).forEach(code => {
+        const img = new Image();
+        img.src = countryLandmarks[code].url;
+        monumentImages[code] = img;
+    });
+
+    // ملء قائمة الاختيار
+    const selectEl = document.getElementById('countrySelectDropdown');
+    if (selectEl) {
+        selectEl.innerHTML = Object.keys(countryLandmarks).map(code => {
+            const item = countryLandmarks[code];
+            return `<option value="${code}">${item.flag} ${item.name} (${code})</option>`;
+        }).join('');
+    }
+
     function showNotification(message, type = 'error') {
         const container = document.getElementById('toastContainer');
         if (!container) return;
-
         container.innerHTML = '';
-
         const toast = document.createElement('div');
         const bgColor = type === 'error' 
             ? 'bg-red-950/80 border-red-500/60 text-red-200 shadow-red-500/20' 
             : 'bg-emerald-950/80 border-emerald-500/60 text-emerald-200 shadow-emerald-500/20';
-        const icon = type === 'error' ? '⚡' : '✨';
-
         toast.className = `flash-toast fixed left-1/2 glass-hud px-5 py-2.5 rounded-2xl border text-xs sm:text-sm font-black shadow-2xl flex items-center justify-center gap-2 ${bgColor} whitespace-nowrap`;
-        toast.innerHTML = `<span class="text-base">${icon}</span> <span class="leading-none">${message}</span>`;
-        
+        toast.innerHTML = `<span class="text-base">${type === 'error' ? '⚡' : '✨'}</span> <span class="leading-none">${message}</span>`;
         container.appendChild(toast);
-
-        setTimeout(() => {
-            if (toast && toast.parentNode) {
-                toast.remove();
-            }
-        }, 2000);
+        setTimeout(() => toast?.parentNode && toast.remove(), 2000);
     }
 
     let sidebarOpen = true;
@@ -179,7 +262,6 @@
         const sidebar = document.getElementById('leaderboardSidebar');
         const icon = document.getElementById('toggleSidebarIcon');
         sidebarOpen = !sidebarOpen;
-        
         if (sidebarOpen) {
             sidebar.classList.remove('translate-x-[120%]', 'opacity-0', 'pointer-events-none');
             sidebar.classList.add('translate-x-0', 'opacity-100');
@@ -191,6 +273,18 @@
         }
     }
 
+    function toggleAdminDashboard() {
+        const adm = document.getElementById('adminModal');
+        adm.classList.toggle('hidden');
+    }
+
+    function adminTriggerAction(action) {
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'ADMIN_ACTION', action }));
+            showNotification("تم إرسال الأمر الإداري!", "success");
+        }
+    }
+
     const canvas = document.getElementById('worldCanvas');
     const ctx = canvas.getContext('2d');
 
@@ -199,27 +293,22 @@
         const dpr = window.devicePixelRatio || 1;
         screenWidth = window.innerWidth;
         screenHeight = window.innerHeight;
-
         canvas.width = screenWidth * dpr;
         canvas.height = screenHeight * dpr;
-
         canvas.style.width = screenWidth + 'px';
         canvas.style.height = screenHeight + 'px';
-
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
     }
     window.addEventListener('resize', resize);
     resize();
 
-    // مضاعفة حجم الملعب 10 أضعاف
     const PITCH_BOUNDS = { minX: 0, maxX: 140000, minY: 0, maxY: 80000 };
     const centerX = (PITCH_BOUNDS.maxX + PITCH_BOUNDS.minX) / 2;
     const centerY = (PITCH_BOUNDS.maxY + PITCH_BOUNDS.minY) / 2;
 
     let camera = { x: centerX, y: centerY, zoom: 0.015, targetZoom: 0.015 };
-    const MIN_ZOOM = 0.005;
-    const MAX_ZOOM = 1.20;
+    const MIN_ZOOM = 0.005, MAX_ZOOM = 1.20;
 
     let activePlayers = {};
     let standLocations = {};
@@ -236,26 +325,10 @@
         return Math.min(3000, Math.max(60, Math.round(calculatedRadius)));
     }
 
-    const monumentImages = {};
-    const countryLandmarks = {
-        "SY": { name: "سوريا", flag: "🇸🇾", color: "#00f5ff", url: "https://images.unsplash.com/photo-1565557623262-b51c2513a641?auto=format&fit=crop&w=400&q=80" },
-        "SA": { name: "السعودية", flag: "🇸🇦", color: "#3bff17", url: "https://images.unsplash.com/photo-1586724237569-f3d0c1dee8c6?auto=format&fit=crop&w=400&q=80" },
-        "TR": { name: "تركيا", flag: "🇹🇷", color: "#ff4b89", url: "https://images.unsplash.com/photo-1541432901042-2d8bd64b4a9b?auto=format&fit=crop&w=400&q=80" },
-        "EG": { name: "مصر", flag: "🇪🇬", color: "#ffb1c3", url: "https://images.unsplash.com/photo-1503177119275-0aa32b3a9368?auto=format&fit=crop&w=400&q=80" },
-        "AE": { name: "الإمارات", flag: "🇦🇪", color: "#ffd9e0", url: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=400&q=80" }
-    };
-
-    Object.keys(countryLandmarks).forEach(code => {
-        const img = new Image();
-        img.src = countryLandmarks[code].url;
-        monumentImages[code] = img;
-    });
-
     function confirmCountryAndStart() {
         const dropdown = document.getElementById('countrySelectDropdown');
         if (dropdown) selectedCountryCode = dropdown.value;
         document.getElementById('countrySelectModal').classList.add('hidden');
-
         setupWebSocket();
     }
 
@@ -278,13 +351,7 @@
                         Object.keys(data.activePlayers || {}).forEach(id => {
                             const pData = data.activePlayers[id];
                             if (!activePlayers[id]) {
-                                activePlayers[id] = { 
-                                    ...pData, 
-                                    x: pData.x, 
-                                    y: pData.y, 
-                                    targetX: pData.x, 
-                                    targetY: pData.y 
-                                };
+                                activePlayers[id] = { ...pData, x: pData.x, y: pData.y, targetX: pData.x, targetY: pData.y };
                             } else {
                                 activePlayers[id].targetX = pData.x;
                                 activePlayers[id].targetY = pData.y;
@@ -298,9 +365,7 @@
                         });
 
                         Object.keys(activePlayers).forEach(id => {
-                            if (!data.activePlayers[id]) {
-                                delete activePlayers[id];
-                            }
+                            if (!data.activePlayers[id]) delete activePlayers[id];
                         });
 
                         if (data.standLocations) standLocations = data.standLocations;
@@ -312,6 +377,7 @@
                         }
 
                         updateLeaderboard();
+                        updateAdminUI(data);
                     } else if (data.type === 'EATEN') {
                         document.getElementById('respawnOverlay').classList.remove('hidden');
                         showNotification(`تم ابتلاعك بواسطة ${data.eatenBy}`, 'error');
@@ -325,6 +391,39 @@
         }
     }
 
+    function updateAdminUI(syncData) {
+        const players = Object.values(syncData.activePlayers || {});
+        const bots = players.filter(p => p.isBot);
+        const guests = players.filter(p => String(p.id).startsWith('guest_'));
+        
+        const actEl = document.getElementById('admActivePlayers');
+        const botEl = document.getElementById('admBotCount');
+        const gstEl = document.getElementById('admGuestPoints');
+        const table = document.getElementById('admCountriesTable');
+
+        if (actEl) actEl.innerText = players.length;
+        if (botEl) botEl.innerText = bots.length;
+        if (gstEl) gstEl.innerText = guests.reduce((acc, g) => acc + (g.points || 0), 0);
+
+        if (table && syncData.standTotals) {
+            table.innerHTML = Object.keys(syncData.standTotals).map(code => {
+                const info = countryLandmarks[code] || { name: code, flag: '🚩' };
+                const totalPts = Number(syncData.standTotals[code] || 0).toLocaleString();
+                const activeInCountry = players.filter(p => p.country?.code === code).length;
+
+                return `
+                    <tr class="hover:bg-white/5 transition">
+                        <td class="p-3 text-lg">${info.flag}</td>
+                        <td class="p-3 font-bold text-white">${info.name}</td>
+                        <td class="p-3 font-mono text-cyan-400">${code}</td>
+                        <td class="p-3 font-mono font-bold text-amber-400">${totalPts} $</td>
+                        <td class="p-3 font-mono text-emerald-400">${activeInCountry}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    }
+
     function requestReentry() {
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: 'REENTER_ARENA' }));
@@ -335,11 +434,8 @@
     function updatePhysics() {
         for (let i = eatEffects.length - 1; i >= 0; i--) {
             const fx = eatEffects[i];
-            fx.radius += 8;
-            fx.alpha -= 0.04;
-            if (fx.alpha <= 0 || fx.radius >= fx.maxRadius) {
-                eatEffects.splice(i, 1);
-            }
+            fx.radius += 8; fx.alpha -= 0.04;
+            if (fx.alpha <= 0 || fx.radius >= fx.maxRadius) eatEffects.splice(i, 1);
         }
     }
 
@@ -363,10 +459,7 @@
         if (!supabaseClient || !uid || uid.startsWith('guest_')) return;
         try {
             const { data, error } = await supabaseClient.from('profiles').select('*').eq('id', uid).maybeSingle();
-            if (!error && data) {
-                currentUserProfile = data;
-                updateAuthUI();
-            }
+            if (!error && data) { currentUserProfile = data; updateAuthUI(); }
         } catch (e) {}
     }
 
@@ -377,7 +470,6 @@
         const email = document.getElementById('userEmailInput').value.trim();
         const password = document.getElementById('userPasswordInput').value.trim();
         const errorEl = document.getElementById('loginError');
-
         if (!email || !password) return;
 
         try {
@@ -408,67 +500,27 @@
     }
 
     window.addEventListener('wheel', (e) => {
-        if (e.target.closest('#toastContainer, #leaderboardSidebar, #loginModal, #countrySelectModal, #respawnOverlay')) return;
+        if (e.target.closest('#toastContainer, #leaderboardSidebar, #loginModal, #countrySelectModal, #respawnOverlay, #adminModal')) return;
         e.preventDefault();
         const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
         camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.targetZoom * zoomFactor));
     }, { passive: false });
 
-    let touchStartDist = 0;
-    window.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 2) {
-            touchStartDist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-        } else if (e.touches.length === 1) {
-            const touch = e.touches[0];
-            if (!touch.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) {
-                sendTarget(touch.clientX, touch.clientY);
-            }
-        }
-    }, { passive: true });
-
-    window.addEventListener('touchmove', (e) => {
-        if (e.touches.length === 2) {
-            const currentDist = Math.hypot(
-                e.touches[0].clientX - e.touches[1].clientX,
-                e.touches[0].clientY - e.touches[1].clientY
-            );
-            if (touchStartDist > 0) {
-                const scale = currentDist / touchStartDist;
-                camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.targetZoom * (scale > 1 ? 1.03 : 0.97)));
-                touchStartDist = currentDist;
-            }
-        } else if (e.touches.length === 1) {
-            const touch = e.touches[0];
-            if (touch.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
-            e.preventDefault();
-            sendTarget(touch.clientX, touch.clientY);
-        }
-    }, { passive: false });
-
     function sendTarget(clientX, clientY) {
         const me = activePlayers[currentUserId];
         if (!me) return;
-
         const worldX = me.x + (clientX - screenWidth / 2) / camera.zoom;
         const worldY = me.y + (clientY - screenHeight / 2) / camera.zoom;
-
         const targetX = Math.max(PITCH_BOUNDS.minX, Math.min(PITCH_BOUNDS.maxX, worldX));
         const targetY = Math.max(PITCH_BOUNDS.minY, Math.min(PITCH_BOUNDS.maxY, worldY));
 
         if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(JSON.stringify({
-                type: 'TARGET',
-                x: targetX,
-                y: targetY
-            }));
+            socket.send(JSON.stringify({ type: 'TARGET', x: targetX, y: targetY }));
         }
     }
 
     window.addEventListener('mousemove', (e) => {
-        if (e.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
+        if (e.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal, #adminModal')) return;
         sendTarget(e.clientX, e.clientY);
     });
 
@@ -500,7 +552,7 @@
         }).join('');
     }
 
-    // رسم المدرجات المربعة بالكامل المحيطة بكامل الملعب
+    // رسم المدرجات الـ 20 المحيطة بالكامل بالميدان
     function drawStands() {
         if (!standLocations) return;
 
@@ -525,7 +577,7 @@
                 ctx.fillRect(x, y, size, size);
             }
 
-            // إطار مربع متوهج للمدرج
+            // إطار متوهج للمدرج المربع
             ctx.strokeStyle = themeColor;
             ctx.lineWidth = 120;
             ctx.shadowBlur = 100;
@@ -552,13 +604,7 @@
 
     function drawStadiumPitch() {
         ctx.fillStyle = "#0c1220";
-        ctx.fillRect(-60000, -60000, 260000, 200000);
-
-        let lightGrad = ctx.createRadialGradient(centerX, centerY, 10000, centerX, centerY, 120000);
-        lightGrad.addColorStop(0, "rgba(0, 245, 255, 0.12)");
-        lightGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
-        ctx.fillStyle = lightGrad;
-        ctx.fillRect(-60000, -60000, 260000, 200000);
+        ctx.fillRect(-80000, -80000, 300000, 240000);
 
         let pitchWidth = PITCH_BOUNDS.maxX - PITCH_BOUNDS.minX;
         let pitchHeight = PITCH_BOUNDS.maxY - PITCH_BOUNDS.minY;
@@ -570,13 +616,11 @@
         ctx.fillStyle = turfGrad;
         ctx.fillRect(PITCH_BOUNDS.minX, PITCH_BOUNDS.minY, pitchWidth, pitchHeight);
 
-        // تخطيط نجيل الميدان
         ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
         for (let x = PITCH_BOUNDS.minX; x < PITCH_BOUNDS.maxX; x += 7000) {
             ctx.fillRect(x, PITCH_BOUNDS.minY, 3500, pitchHeight);
         }
 
-        // إطار الملعب المضيء
         ctx.strokeStyle = "#00f5ff";
         ctx.lineWidth = 200;
         ctx.shadowBlur = 150;
@@ -584,26 +628,10 @@
         ctx.strokeRect(PITCH_BOUNDS.minX, PITCH_BOUNDS.minY, pitchWidth, pitchHeight);
         ctx.shadowBlur = 0;
 
-        // منتصف الملعب والدائرة المركزية
         ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
         ctx.lineWidth = 120;
         ctx.beginPath(); ctx.moveTo(centerX, PITCH_BOUNDS.minY); ctx.lineTo(centerX, PITCH_BOUNDS.maxY); ctx.stroke();
         ctx.beginPath(); ctx.arc(centerX, centerY, 10000, 0, Math.PI * 2); ctx.stroke();
-    }
-
-    function drawEatEffects() {
-        eatEffects.forEach(fx => {
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(fx.x, fx.y, fx.radius, 0, Math.PI * 2);
-            ctx.strokeStyle = fx.color;
-            ctx.lineWidth = 12;
-            ctx.globalAlpha = fx.alpha;
-            ctx.shadowBlur = 30;
-            ctx.shadowColor = fx.color;
-            ctx.stroke();
-            ctx.restore();
-        });
     }
 
     function drawOrb(p) {
@@ -669,7 +697,6 @@
     function render() {
         updatePhysics();
 
-        // التنعيم
         Object.values(activePlayers).forEach(p => {
             if (p.targetX !== undefined && p.targetY !== undefined) {
                 p.x += (p.targetX - p.x) * 0.25;
@@ -679,7 +706,6 @@
 
         const dpr = window.devicePixelRatio || 1;
         const me = activePlayers[currentUserId];
-        
         if (me) {
             camera.x += (me.x - camera.x) * 0.1;
             camera.y += (me.y - camera.y) * 0.1;
@@ -689,7 +715,6 @@
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         ctx.save();
-        
         ctx.scale(dpr, dpr);
         ctx.translate(screenWidth / 2, screenHeight / 2);
         ctx.scale(camera.zoom, camera.zoom);
@@ -697,7 +722,6 @@
 
         drawStadiumPitch();
         drawStands();
-        drawEatEffects();
 
         Object.values(activePlayers).forEach(p => drawOrb(p));
 

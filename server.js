@@ -24,13 +24,37 @@ const PITCH_BOUNDS = { minX: 0, maxX: 140000, minY: 0, maxY: 80000 };
 let incentivePool = 0; 
 let botCounter = 0;
 
-// المدرجات المربعة تماماً والمحيطة بكامل الميدان
+// المدرجات المربعة الـ 20 المحيطة بكامل الميدان (حجم موحد 20,000)
 const STAND_LOCATIONS = {
-    "SY": { x: 35000,  y: -10000, size: 20000, edge: 'TOP' },
-    "TR": { x: 105000, y: -10000, size: 20000, edge: 'TOP' },
-    "SA": { x: 35000,  y: 90000,  size: 20000, edge: 'BOTTOM' },
-    "EG": { x: 105000, y: 90000,  size: 20000, edge: 'BOTTOM' },
-    "AE": { x: 150000, y: 40000,  size: 20000, edge: 'RIGHT' }
+    // الجزء العلوي (شمال)
+    "SY": { x: 15000,  y: -12000, size: 20000, edge: 'TOP' },
+    "SA": { x: 42000,  y: -12000, size: 20000, edge: 'TOP' },
+    "TR": { x: 70000,  y: -12000, size: 20000, edge: 'TOP' },
+    "EG": { x: 98000,  y: -12000, size: 20000, edge: 'TOP' },
+    "AE": { x: 125000, y: -12000, size: 20000, edge: 'TOP' },
+
+    // الجزء السفلي (جنوب)
+    "QA": { x: 15000,  y: 92000,  size: 20000, edge: 'BOTTOM' },
+    "KW": { x: 42000,  y: 92000,  size: 20000, edge: 'BOTTOM' },
+    "IQ": { x: 70000,  y: 92000,  size: 20000, edge: 'BOTTOM' },
+    "JO": { x: 98000,  y: 92000,  size: 20000, edge: 'BOTTOM' },
+    "LB": { x: 125000, y: 92000,  size: 20000, edge: 'BOTTOM' },
+
+    // الجانب الأيمن (شرق)
+    "OM": { x: 152000, y: 5000,   size: 20000, edge: 'RIGHT' },
+    "BH": { x: 152000, y: 28000,  size: 20000, edge: 'RIGHT' },
+    "MA": { x: 152000, y: 52000,  size: 20000, edge: 'RIGHT' },
+    "DZ": { x: 152000, y: 75000,  size: 20000, edge: 'RIGHT' },
+
+    // الجانب الأيسر (غرب)
+    "TN": { x: -12000, y: 5000,   size: 20000, edge: 'LEFT' },
+    "LY": { x: -12000, y: 28000,  size: 20000, edge: 'LEFT' },
+    "SD": { x: -12000, y: 52000,  size: 20000, edge: 'LEFT' },
+    "YE": { x: -12000, y: 75000,  size: 20000, edge: 'LEFT' },
+
+    // الأركان العلوية
+    "PS": { x: -12000, y: -12000, size: 20000, edge: 'TOP_LEFT' },
+    "US": { x: 152000, y: -12000, size: 20000, edge: 'TOP_RIGHT' }
 };
 
 const COUNTRY_DATA = {
@@ -38,14 +62,29 @@ const COUNTRY_DATA = {
     "SA": { name: "السعودية", flag: "🇸🇦", image: "/flags/sa.png" },
     "TR": { name: "تركيا", flag: "🇹🇷", image: "/flags/tr.png" },
     "EG": { name: "مصر", flag: "🇪🇬", image: "/flags/eg.png" },
-    "AE": { name: "الإمارات", flag: "🇦🇪", image: "/flags/ae.png" }
+    "AE": { name: "الإمارات", flag: "🇦🇪", image: "/flags/ae.png" },
+    "QA": { name: "قطر", flag: "🇶🇦", image: "/flags/qa.png" },
+    "KW": { name: "الكويت", flag: "🇰🇼", image: "/flags/kw.png" },
+    "IQ": { name: "العراق", flag: "🇮🇶", image: "/flags/iq.png" },
+    "JO": { name: "الأردن", flag: "🇯🇴", image: "/flags/jo.png" },
+    "LB": { name: "لبنان", flag: "🇱🇧", image: "/flags/lb.png" },
+    "OM": { name: "عُمان", flag: "🇴🇲", image: "/flags/om.png" },
+    "BH": { name: "البحرين", flag: "🇧🇭", image: "/flags/bh.png" },
+    "MA": { name: "المغرب", flag: "🇲🇦", image: "/flags/ma.png" },
+    "DZ": { name: "الجزائر", flag: "🇩🇿", image: "/flags/dz.png" },
+    "TN": { name: "تونس", flag: "🇹🇳", image: "/flags/tn.png" },
+    "LY": { name: "ليبيا", flag: "🇱🇾", image: "/flags/ly.png" },
+    "SD": { name: "السودان", flag: "🇸🇩", image: "/flags/sd.png" },
+    "YE": { name: "اليمن", flag: "🇾🇪", image: "/flags/ye.png" },
+    "PS": { name: "فلسطين", flag: "🇵🇸", image: "/flags/ps.png" },
+    "US": { name: "أمريكا", flag: "🇺🇸", image: "/flags/us.png" }
 };
 
 let activePlayers = {}; 
 let standVault = {};     
 
 const BOT_NAMES = ['Ghost_Hunter', 'Shadow_King', 'Vortex_99', 'Neon_Blade', 'Zeus_BOY', 'Alpha_Wolf', 'Storm_Rider', 'Titan_X', 'Cyber_Samurai', 'Phantom_Lord', 'Odin_King', 'Valkyrie_X', 'Apex_Predator', 'Blaze_Strike', 'Omega_Prime'];
-const COUNTRIES = ['SY', 'SA', 'TR', 'EG', 'AE'];
+const COUNTRIES = Object.keys(COUNTRY_DATA);
 
 function calculateRadius(points) {
     const val = Math.max(0, Number(points) || 0);
@@ -88,7 +127,8 @@ function getRandomOnPitchPosition(radius) {
 }
 
 function getStandTotals() {
-    const totals = { "SY": 0, "SA": 0, "TR": 0, "EG": 0, "AE": 0 };
+    const totals = {};
+    COUNTRIES.forEach(c => totals[c] = 0);
     
     Object.values(activePlayers).forEach(p => {
         const code = p.country?.code || 'SY';
@@ -273,7 +313,7 @@ wss.on('connection', async (ws, req) => {
                     let p = standVault[socketId];
                     delete standVault[socketId];
 
-                    if (isGuestPlayer(p)) p.points = 100;
+                    if (isGuestPlayer(p)) p.points = 10;
                     p.radius = calculateRadius(p.points);
 
                     const spawnPos = getRandomOnPitchPosition(p.radius || 60);
@@ -294,6 +334,15 @@ wss.on('connection', async (ws, req) => {
                     const r = current.radius || 60;
                     current.targetX = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, data.x));
                     current.targetY = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, data.y));
+                }
+            } else if (data.type === 'ADMIN_ACTION') {
+                // استقبال أوامر لوحة التحكم الإدارية
+                if (data.action === 'SPAWN_BOT') {
+                    spawnBotFromPool(50);
+                } else if (data.action === 'CLEAR_BOTS') {
+                    Object.keys(activePlayers).forEach(id => {
+                        if (activePlayers[id].isBot) delete activePlayers[id];
+                    });
                 }
             }
         } catch (e) {
