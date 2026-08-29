@@ -338,19 +338,10 @@
         eatEffects.push({
             x: x,
             y: y,
-            radius: radius * 0.6,
-            maxRadius: radius * 2.5,
+            radius: radius * 0.8,
+            maxRadius: radius * 2.2,
             alpha: 1.0,
-            flash: 1.0,
-            color: color || '#00ffff',
-            spikes: Array.from({ length: 10 }, () => ({
-                angle: Math.random() * Math.PI * 2,
-                length: radius * (1.2 + Math.random() * 1.5),
-                branches: Array.from({ length: 2 }, () => ({
-                    offsetAngle: (Math.random() - 0.5) * 0.8,
-                    lengthRatio: 0.3 + Math.random() * 0.4
-                }))
-            }))
+            color: color || '#00ffff'
         });
     }
 
@@ -459,9 +450,8 @@
     function updatePhysics() {
         for (let i = eatEffects.length - 1; i >= 0; i--) {
             const fx = eatEffects[i];
-            fx.radius += 10; 
-            fx.alpha -= 0.035;
-            if (fx.flash > 0) fx.flash -= 0.08;
+            fx.radius += 8; 
+            fx.alpha -= 0.03;
             if (fx.alpha <= 0 || fx.radius >= fx.maxRadius) eatEffects.splice(i, 1);
         }
     }
@@ -470,65 +460,14 @@
         eatEffects.forEach(fx => {
             ctx.save();
             ctx.translate(fx.x, fx.y);
-
-            // 1. وميض التصادم (Impact Flash)
-            if (fx.flash > 0) {
-                ctx.beginPath();
-                ctx.arc(0, 0, fx.radius * 1.8, 0, Math.PI * 2);
-                ctx.fillStyle = `rgba(255, 255, 255, ${fx.flash * 0.8})`;
-                ctx.shadowBlur = 50;
-                ctx.shadowColor = "#ffffff";
-                ctx.fill();
-            }
-
-            // 2. هالة وموجة الصدمة (Shockwave Ring)
             ctx.beginPath();
             ctx.arc(0, 0, fx.radius, 0, Math.PI * 2);
             ctx.strokeStyle = fx.color || "#00ffff";
-            ctx.lineWidth = Math.max(4, 14 * fx.alpha);
-            ctx.shadowBlur = 30;
+            ctx.lineWidth = Math.max(3, 10 * fx.alpha);
+            ctx.shadowBlur = 25;
             ctx.shadowColor = fx.color || "#00ffff";
             ctx.globalAlpha = Math.max(0, fx.alpha);
             ctx.stroke();
-
-            // 3. صعقات البرق للابتلاع (Swallow Lightning Sparks)
-            if (fx.spikes) {
-                fx.spikes.forEach(spike => {
-                    ctx.beginPath();
-                    ctx.moveTo(0, 0);
-                    let curX = 0, curY = 0;
-                    const targetX = Math.cos(spike.angle) * spike.length;
-                    const targetY = Math.sin(spike.angle) * spike.length;
-                    const steps = 4;
-                    for (let s = 1; s <= steps; s++) {
-                        const t = s / steps;
-                        const nextX = targetX * t + (Math.random() - 0.5) * 30;
-                        const nextY = targetY * t + (Math.random() - 0.5) * 30;
-                        ctx.lineTo(nextX, nextY);
-                        curX = nextX;
-                        curY = nextY;
-                    }
-                    ctx.strokeStyle = Math.random() > 0.4 ? "#ffffff" : (fx.color || "#00ffff");
-                    ctx.lineWidth = 3 + Math.random() * 4;
-                    ctx.shadowBlur = 25;
-                    ctx.shadowColor = fx.color || "#00ffff";
-                    ctx.stroke();
-
-                    // تفريعات البرق الفرعية
-                    spike.branches.forEach(branch => {
-                        ctx.beginPath();
-                        ctx.moveTo(curX * 0.5, curY * 0.5);
-                        const bAngle = spike.angle + branch.offsetAngle;
-                        const bLen = spike.length * branch.lengthRatio;
-                        const bx = Math.cos(bAngle) * bLen + (Math.random() - 0.5) * 15;
-                        const by = Math.sin(bAngle) * bLen + (Math.random() - 0.5) * 15;
-                        ctx.lineTo(bx, by);
-                        ctx.strokeStyle = "#ffffff";
-                        ctx.lineWidth = 2;
-                        ctx.stroke();
-                    });
-                });
-            }
             ctx.restore();
         });
     }
@@ -789,16 +728,22 @@
         const themeColor = countryLandmarks[countryCode]?.color || "#00f5ff";
         const isProtected = p.protectedUntil && (p.protectedUntil > Date.now());
 
-        // هالة توهج خارجية ملونة للكرة (Orb Glow Aura)
+        // 🌟 هالة الكرة (مربوطة مباشرة بقوة الكرة PWR)
+        const power = Number(p.points || 0);
+        const auraMultiplier = 1.25 + Math.min(1.2, Math.pow(power, 0.42) * 0.06); // يتسع المدى كلما زادت الطاقة
+        const auraAlpha = Math.min(0.85, 0.35 + Math.min(0.5, power / 1000));     // يزداد التوهج والشفافية مع الطاقة
+        const auraRadius = radius * auraMultiplier;
+
         ctx.save();
-        let glowGrad = ctx.createRadialGradient(0, 0, radius * 0.6, 0, 0, radius * 1.4);
+        let glowGrad = ctx.createRadialGradient(0, 0, radius * 0.4, 0, 0, auraRadius);
         glowGrad.addColorStop(0, themeColor);
-        glowGrad.addColorStop(0.5, themeColor);
-        glowGrad.addColorStop(1, "rgba(0,0,0,0)");
+        glowGrad.addColorStop(0.55, themeColor);
+        glowGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+        
         ctx.fillStyle = glowGrad;
-        ctx.globalAlpha = 0.65;
+        ctx.globalAlpha = auraAlpha;
         ctx.beginPath();
-        ctx.arc(0, 0, radius * 1.4, 0, Math.PI * 2);
+        ctx.arc(0, 0, auraRadius, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
 
@@ -843,7 +788,7 @@
         
         const flag = p.country?.flag || '';
         const name = p.name || 'لاعب';
-        const powerValue = Number(p.points || 0).toLocaleString();
+        const powerValue = power.toLocaleString();
 
         ctx.fillText(`${flag} ${name}`, 0, -fontSize * 0.7);
         
