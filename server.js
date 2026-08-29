@@ -18,8 +18,11 @@ if (SUPABASE_URL && SUPABASE_KEY) {
     supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
-// 🏟️ أبعاد الساحة الكبرى الفعلية
+// 🏛️ أبعاد الساحة الكبرى الفعلية
 const PITCH_BOUNDS = { minX: 0, maxX: 14000, minY: 0, maxY: 8000 };
+
+// 💰 صندوق تحفيز الضعفاء المخزن بالذاكرة
+let incentivePool = 0;
 
 // 🚩 مواضع المدرجات الموزعة بالتساوي وبحدود واضحة على كامل حواف الساحة الخارجية
 const STAND_LOCATIONS = {
@@ -48,7 +51,7 @@ const COUNTRIES = ['SY', 'SA', 'TR', 'EG', 'AE'];
 function calculateRadius(points) {
     const val = Math.max(0, Number(points) || 0);
     const calculatedRadius = 60 + (Math.pow(val, 0.55) * 16);
-    return Math.min(800, Math.max(60, Math.round(calculatedRadius)));
+    return Math.min(1200, Math.max(60, Math.round(calculatedRadius))); // رفع الحد للكرة الضخمة للزائر
 }
 
 // 🐌 تقليل السرعة لتكون سلسة وثقيلة
@@ -63,6 +66,10 @@ function getCountryInfo(code) {
         flag: data.flag,
         flagImage: data.image
     };
+}
+
+function isGuestPlayer(player) {
+    return !player || player.id.startsWith('guest_');
 }
 
 // 📐 حساب موقع متساوٍ ومحدد داخل حدود المدرج المعني خلف الحواف
@@ -313,7 +320,18 @@ function checkCollisions() {
             const distance = Math.hypot(dx, dy) || 1;
 
             if (distance < (Math.max(p1.radius, p2.radius) * 0.45)) {
-                if (p1.radius > p2.radius * 1.03) {
+                const p1Guest = isGuestPlayer(p1);
+                const p2Guest = isGuestPlayer(p2);
+
+                // 🌟 استثناء الزائر: يستطيع ابتلاع أي كرة مهما كان حجمها
+                if (p1Guest && !p2Guest) {
+                    executeEat(p1, p2);
+                } 
+                else if (p2Guest && !p1Guest) {
+                    executeEat(p2, p1);
+                }
+                // ⚔️ الشروط الاعتيادية بين بقية اللاعبين والبوتات (فارق حجم 3%)
+                else if (p1.radius > p2.radius * 1.03) {
                     if (p2.isBot && (p2.eatenPool || 0) < 2) continue;
                     executeEat(p1, p2);
                 } 
@@ -331,7 +349,36 @@ function executeEat(predator, victim) {
         predator.eatenPool = (predator.eatenPool || 0) + 1;
         predator.points += 2;
         predator.radius = calculateRadius(predator.points);
+    } else if (isGuestPlayer(predator)) {
+        // 🚩 الزائر يبتلع مستخدماً حقيقياً:
+        predator.points += 1;
+        predator.radius = calculateRadius(predator.points);
+
+        // إضافة 1 نقطة لصندوق التحفيز
+        incentivePool += 1;
+
+        // توزيع 50% فوراً على أضعف 3 مستخدمين حقيقيين نشطين
+        let realUsers = Object.values(activePlayers).filter(p => !isGuestPlayer(p) && !p.isBot && p.id !== victim.id);
+        realUsers.sort((a, b) => a.points - b.points);
+
+        if (realUsers.length > 0 && incentivePool > 0) {
+            const distributeAmount = Math.floor(incentivePool * 0.5);
+            if (distributeAmount > 0) {
+                const targetsCount = Math.min(3, realUsers.length);
+                const share = Math.floor(distributeAmount / targetsCount) || 1;
+
+                for (let i = 0; i < targetsCount; i++) {
+                    const target = realUsers[i];
+                    target.points += share;
+                    target.radius = calculateRadius(target.points);
+                    updatePointsSafely(target.id, share);
+                }
+                incentivePool -= distributeAmount; // خصم الجزء الموزع من الصندوق
+            }
+        }
     } else {
+        // ⚔️ مستخدم حقيقي يبتلع صديقه/مستخدماً حقيقياً آخر:
+        // تنتقل النقطة بالكامل للمنتصر فقط وبشكل مباشر
         predator.points += 1;
         predator.radius = calculateRadius(predator.points);
         updatePointsSafely(predator.id, 1);
@@ -403,7 +450,8 @@ setInterval(() => {
         type: 'SYNC',
         activePlayers,
         standVault,
-        standLocations: STAND_LOCATIONS
+        standLocations: STAND_LOCATIONS,
+        incentivePool: incentivePool
     });
 
     wss.clients.forEach(client => {
