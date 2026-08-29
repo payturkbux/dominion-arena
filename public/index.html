@@ -2,22 +2,41 @@
 <html class="dark" lang="ar" dir="rtl">
 <head>
     <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
     <title>Dominion Arena Stadium</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Tajawal:wght@500;700;900&display=swap" rel="stylesheet"/>
     <style>
-        body { font-family: 'Tajawal', sans-serif; background-color: #0c101c; margin: 0; overflow: hidden; touch-action: none; }
-        .glass-hud { background: rgba(10, 14, 23, 0.85); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.12); }
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            touch-action: none;
+            -webkit-user-select: none;
+            user-select: none;
+            font-family: 'Tajawal', sans-serif;
+            background-color: #0c101c;
+        }
+        .glass-hud {
+            background: rgba(10, 14, 23, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
         @keyframes slideIn {
             from { transform: translateY(-100%) translateX(-50%); opacity: 0; }
             to { transform: translateY(0) translateX(-50%); opacity: 1; }
         }
         .toast-animate { animation: slideIn 0.3s ease-out forwards; }
+        .sidebar-transition {
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+        }
     </style>
 </head>
-<body class="text-white relative w-screen h-screen select-none">
+<body class="text-white relative w-screen h-screen select-none overflow-hidden">
 
     <div id="toastContainer" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
@@ -33,27 +52,34 @@
         </div>
     </div>
 
-    <header class="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-6 glass-hud px-8 py-3 rounded-2xl shadow-2xl border border-cyan-500/30">
-        <div class="flex items-center gap-3">
-            <span class="text-3xl">⚔️</span>
-            <div>
-                <div id="hudStatusTitle" class="text-[10px] uppercase text-cyan-400 font-bold tracking-widest">ميدان التفاعل الحي والربط المتعدد</div>
-                <div id="hudActionTip" class="text-xs font-bold text-emerald-400">حرّك الماوس أو المس الشاشة لتوجيه كرة الميدان</div>
-            </div>
+    <!-- الهيدر الرئيسي -->
+    <header class="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 glass-hud px-4 py-2 rounded-2xl shadow-2xl border border-cyan-500/30 max-w-[90vw]">
+        <span class="text-xl">⚔️</span>
+        <div class="truncate">
+            <div id="hudStatusTitle" class="text-[9px] sm:text-[10px] uppercase text-cyan-400 font-bold tracking-widest truncate">ميدان التفاعل الحي (طولي)</div>
+            <div id="hudActionTip" class="text-[11px] font-bold text-emerald-400 truncate">المس الشاشة لتوجيه كرتك</div>
         </div>
     </header>
 
-    <div class="absolute top-6 left-6 z-30 flex gap-2">
-        <button id="authBtn" onclick="openLoginModal()" class="glass-hud px-4 py-2.5 rounded-2xl flex items-center gap-2 border border-cyan-500/40 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition shadow-2xl">
+    <!-- أزرار الدخول والخروج -->
+    <div class="absolute top-4 left-4 z-30 flex gap-2">
+        <button id="authBtn" onclick="openLoginModal()" class="glass-hud px-3 py-2 rounded-xl flex items-center gap-1.5 border border-cyan-500/40 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition shadow-2xl">
             <span id="authBtnIcon">🔑</span>
-            <span id="authBtnText">تسجيل الدخول</span>
+            <span id="authBtnText" class="hidden sm:inline">تسجيل الدخول</span>
         </button>
-        <button id="logoutBtn" onclick="submitLogout()" class="hidden glass-hud px-3 py-2.5 rounded-2xl flex items-center gap-1 border border-red-500/40 text-xs font-bold text-red-400 hover:bg-red-500/20 active:scale-95 transition shadow-2xl">
+        <button id="logoutBtn" onclick="submitLogout()" class="hidden glass-hud px-2.5 py-2 rounded-xl flex items-center gap-1 border border-red-500/40 text-xs font-bold text-red-400 hover:bg-red-500/20 active:scale-95 transition shadow-2xl">
             <span>🚪</span>
-            <span>خروج</span>
         </button>
     </div>
 
+    <!-- زر إخفاء / إظهار قائمة المتصدرين للجوال -->
+    <div class="absolute top-4 right-4 z-40">
+        <button id="toggleSidebarBtn" onclick="toggleSidebar()" class="glass-hud p-2.5 rounded-xl border border-amber-500/40 text-amber-400 hover:bg-amber-500/20 active:scale-95 transition shadow-2xl flex items-center justify-center">
+            <span id="toggleSidebarIcon" class="text-base">🏆</span>
+        </button>
+    </div>
+
+    <!-- نافذة تسجيل الدخول -->
     <div id="loginModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
         <div class="glass-hud p-6 rounded-3xl w-full max-w-sm border border-cyan-500/40 text-center shadow-2xl space-y-4">
             <div class="text-4xl">⚽</div>
@@ -77,10 +103,14 @@
         </div>
     </div>
 
-    <aside class="absolute top-6 right-6 z-30 glass-hud p-4 rounded-2xl w-80 border border-amber-500/30 shadow-2xl">
-        <div class="flex items-center gap-2 mb-3 pb-2 border-b border-white/10">
-            <span class="text-xl">🏆</span>
-            <h3 class="font-bold text-sm text-amber-400">قائمة المتصدرين (Top 5)</h3>
+    <!-- قائمة المتصدرين (قابلة للإخفاء) -->
+    <aside id="leaderboardSidebar" class="sidebar-transition absolute top-16 right-4 z-30 glass-hud p-4 rounded-2xl w-72 sm:w-80 border border-amber-500/30 shadow-2xl transform translate-x-0 opacity-100">
+        <div class="flex items-center justify-between mb-3 pb-2 border-b border-white/10">
+            <div class="flex items-center gap-2">
+                <span class="text-xl">🏆</span>
+                <h3 class="font-bold text-sm text-amber-400">المتصدرون (Top 5)</h3>
+            </div>
+            <button onclick="toggleSidebar()" class="text-xs text-gray-400 hover:text-white sm:hidden">✕ إخفاء</button>
         </div>
         <ul id="leaderboardList" class="space-y-2 text-xs"></ul>
     </aside>
@@ -119,6 +149,24 @@
         }, 4000);
     }
 
+    // إخفاء وإظهار قائمة المتصدرين
+    let sidebarOpen = true;
+    function toggleSidebar() {
+        const sidebar = document.getElementById('leaderboardSidebar');
+        const icon = document.getElementById('toggleSidebarIcon');
+        sidebarOpen = !sidebarOpen;
+        
+        if (sidebarOpen) {
+            sidebar.classList.remove('translate-x-[120%]', 'opacity-0', 'pointer-events-none');
+            sidebar.classList.add('translate-x-0', 'opacity-100');
+            icon.innerText = '🏆';
+        } else {
+            sidebar.classList.remove('translate-x-0', 'opacity-100');
+            sidebar.classList.add('translate-x-[120%]', 'opacity-0', 'pointer-events-none');
+            icon.innerText = '📊';
+        }
+    }
+
     const canvas = document.getElementById('worldCanvas');
     const ctx = canvas.getContext('2d');
 
@@ -130,10 +178,11 @@
     window.addEventListener('resize', resize);
     resize();
 
-    const PITCH_BOUNDS = { minX: 500, maxX: 6700, minY: 1900, maxY: 5500 };
+    // 📱 أبعاد الساحة الطولية (Vertical Pitch Bounds)
+    const PITCH_BOUNDS = { minX: 1000, maxX: 3200, minY: 500, maxY: 5700 };
 
-    let camera = { x: 3600, y: 3700, zoom: 0.38, targetZoom: 0.38 };
-    const MIN_ZOOM = 0.20;
+    let camera = { x: 2100, y: 3100, zoom: 0.35, targetZoom: 0.35 };
+    const MIN_ZOOM = 0.15;
     const MAX_ZOOM = 1.20;
 
     let activePlayers = {};
@@ -142,14 +191,10 @@
     let currentUserId = localStorage.getItem('dominion_user_id') || `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
 
     function calculateRadius(points) {
-    const val = Math.max(0, Number(points) || 0);
-    // معادلة الحجم المطلقة النسبية: القطر الأساسي يبدأ من 30 بكسل
-    // تضمن التدرج البصري بحيث تكون كرة 10,000 أضخم بكثير وبشكل تناسبي مقارنة بـ 1,000
-    const calculatedRadius = 30 + Math.pow(val / 10, 0.55);
-    
-    // حد أدنى لحجم الكرة (30px) وحد أقصى متناسب مع الميدان (600px)
-    return Math.min(600, Math.max(30, calculatedRadius));
-}
+        const val = Math.max(0, Number(points) || 0);
+        const calculatedRadius = 30 + Math.pow(val / 10, 0.55);
+        return Math.min(600, Math.max(30, calculatedRadius));
+    }
 
     const monumentImages = {};
     const countryLandmarks = {
@@ -166,20 +211,15 @@
         monumentImages[code] = img;
     });
 
-    // إعداد وتوصيل الـ WebSocket بالسيرفر
     function setupWebSocket() {
-        if (socket) {
-            socket.close();
-        }
+        if (socket) socket.close();
 
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}?userId=${currentUserId}`;
         
         socket = new WebSocket(wsUrl);
 
-        socket.onopen = () => {
-            console.log("تم الاتصال بسيرفر الألعاب بنجاح.");
-        };
+        socket.onopen = () => console.log("تم الاتصال بالسيرفر.");
 
         socket.onmessage = (event) => {
             try {
@@ -200,13 +240,11 @@
                     if (overlay) overlay.classList.remove('hidden');
                 }
             } catch (e) {
-                console.error("خطأ معالجة بيانات WebSocket:", e);
+                console.error("خطأ WebSocket:", e);
             }
         };
 
-        socket.onclose = () => {
-            setTimeout(setupWebSocket, 2000);
-        };
+        socket.onclose = () => setTimeout(setupWebSocket, 2000);
     }
 
     function requestReentry() {
@@ -222,7 +260,7 @@
         const logoutBtn = document.getElementById('logoutBtn');
         
         if (currentUserId && !currentUserId.startsWith('guest_')) {
-            if (authBtnText) authBtnText.innerText = currentUserProfile?.display_name || currentUserProfile?.username || 'حسابي المسجل';
+            if (authBtnText) authBtnText.innerText = currentUserProfile?.display_name || currentUserProfile?.username || 'حسابي';
             if (authBtnIcon) authBtnIcon.innerText = '👤';
             if (logoutBtn) logoutBtn.classList.remove('hidden');
         } else {
@@ -326,7 +364,6 @@
     function handlePointerMove(clientX, clientY) {
         const worldPos = getWorldCoordinates(clientX, clientY);
 
-        // إرسال الهدف المباشر للسيرفر
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({
                 type: 'TARGET',
@@ -342,6 +379,13 @@
     });
 
     window.addEventListener('touchmove', (e) => {
+        if (e.touches && e.touches.length > 0) {
+            if (e.touches[0].target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay')) return;
+            handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+        }
+    }, { passive: true });
+
+    window.addEventListener('touchstart', (e) => {
         if (e.touches && e.touches.length > 0) {
             if (e.touches[0].target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay')) return;
             handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
@@ -376,39 +420,45 @@
         }).join('');
     }
 
+    // 🏟️ رسم الساحة المحدّثة بالطول (Vertical Pitch)
     function drawStadiumPitch() {
         ctx.fillStyle = "#0c1220";
-        ctx.fillRect(-3000, -3000, 13000, 12000);
+        ctx.fillRect(-3000, -3000, 10000, 12000);
 
-        let lightGrad = ctx.createRadialGradient(3600, 3700, 500, 3600, 3700, 5500);
-        lightGrad.addColorStop(0, "rgba(0, 245, 255, 0.1)");
+        // خلفية إضاءة طولية
+        let lightGrad = ctx.createRadialGradient(2100, 3100, 500, 2100, 3100, 4500);
+        lightGrad.addColorStop(0, "rgba(0, 245, 255, 0.12)");
         lightGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
         ctx.fillStyle = lightGrad;
-        ctx.fillRect(-3000, -3000, 13000, 12000);
+        ctx.fillRect(-3000, -3000, 10000, 12000);
 
-        let turfGrad = ctx.createLinearGradient(0, 1900, 0, 5500);
+        // العشب الطولي (2200px × 5200px)
+        let turfGrad = ctx.createLinearGradient(1000, 0, 3200, 0);
         turfGrad.addColorStop(0, "#0a3320");
         turfGrad.addColorStop(0.5, "#0e442b");
         turfGrad.addColorStop(1, "#0a3320");
         ctx.fillStyle = turfGrad;
-        ctx.fillRect(500, 1900, 6200, 3600);
+        ctx.fillRect(1000, 500, 2200, 5200);
 
+        // تقليمات العشب الأفقي
         ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
-        for (let x = 500; x < 6700; x += 300) {
-            ctx.fillRect(x, 1900, 150, 3600);
+        for (let y = 500; y < 5700; y += 300) {
+            ctx.fillRect(1000, y, 2200, 150);
         }
 
+        // إطار الملعب الطولي النيوني
         ctx.strokeStyle = "#00f5ff";
         ctx.lineWidth = 14;
         ctx.shadowBlur = 30;
         ctx.shadowColor = "#00f5ff";
-        ctx.strokeRect(500, 1900, 6200, 3600);
+        ctx.strokeRect(1000, 500, 2200, 5200);
         ctx.shadowBlur = 0;
 
+        // خط المنتصف ومناطق المرمى (أفقي في الساحة الطولية)
         ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
         ctx.lineWidth = 10;
-        ctx.beginPath(); ctx.moveTo(3600, 1900); ctx.lineTo(3600, 5500); ctx.stroke();
-        ctx.beginPath(); ctx.arc(3600, 3700, 450, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(1000, 3100); ctx.lineTo(3200, 3100); ctx.stroke();
+        ctx.beginPath(); ctx.arc(2100, 3100, 350, 0, Math.PI * 2); ctx.stroke();
     }
 
     function drawOrb(p) {
@@ -463,7 +513,6 @@
         const me = activePlayers[currentUserId] || standVault[currentUserId];
         
         if (me) {
-            // تتبع الكاميرا لكرة اللاعب بسلاسة
             camera.x += (me.x - camera.x) * 0.1;
             camera.y += (me.y - camera.y) * 0.1;
         }
@@ -478,7 +527,6 @@
 
         drawStadiumPitch();
 
-        // رسم كرات الميدان والمدرجات
         Object.values(standVault).forEach(p => drawOrb(p));
         Object.values(activePlayers).forEach(p => drawOrb(p));
 

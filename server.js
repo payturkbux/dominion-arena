@@ -31,7 +31,7 @@ const STAND_LOCATIONS = {
 let activePlayers = {}; 
 let standVault = {};    
 
-const BOT_NAMES = ['Ghost_Hunter', 'Shadow_King', 'Vortex_99', 'Neon_Blade', 'Zeus_BOY', 'Alpha_Wolf', 'Storm_Rider', 'Titan_X', 'Apex_Predator'];
+const BOT_NAMES = ['Ghost_Hunter', 'Shadow_King', 'Vortex_99', 'Neon_Blade', 'Zeus_BOY', 'Alpha_Wolf', 'Storm_Rider', 'Titan_X'];
 const COUNTRIES = ['SY', 'SA', 'TR', 'EG', 'AE'];
 
 function calculateRadius(points) {
@@ -40,11 +40,9 @@ function calculateRadius(points) {
     return Math.min(300, Math.max(30, Math.round(calculatedRadius)));
 }
 
-// 🎯 تم تخفيض قيم السرعة لتصبح الحركة بطيئة وانسيابية
+// 📱 سرعة متزنة ومناسبة جداً لإصبع الهاتف
 function calculateSpeed(radius) {
-    // معامل تنعيم الحركة (Interpolation factor)
-    const factor = Math.max(0.015, 0.05 - (radius / 4000));
-    return factor;
+    return Math.max(0.025, 0.075 - (radius / 3000));
 }
 
 function getCountryFlag(code) {
@@ -330,7 +328,7 @@ function executeEat(predator, victim) {
     }
 }
 
-// 🎯 تحديث سرعة الحركة والحفاظ على الانسيابية البطيئة
+// 🎯 معالجة الحركة لمنع الاهتزاز عند التلامس
 setInterval(() => {
     Object.values(activePlayers).forEach(p => {
         if (p.isBot) {
@@ -342,13 +340,16 @@ setInterval(() => {
         }
 
         if (typeof p.targetX === 'number' && typeof p.targetY === 'number') {
-            const easeFactor = calculateSpeed(p.radius);
             const dx = p.targetX - p.x;
             const dy = p.targetY - p.y;
-            
-            // تحريك تدريجي بطيء وثابت
-            p.x += dx * easeFactor;
-            p.y += dy * easeFactor;
+            const dist = Math.hypot(dx, dy);
+
+            // Dead-zone: إذا كان إصبع اللاعب قريباً جداً من مركز الكرة (أقل من 10px)، تتوقف الكرة لإنهاء الاهتزاز
+            if (dist > 10) {
+                const speedFactor = calculateSpeed(p.radius);
+                p.x += dx * speedFactor;
+                p.y += dy * speedFactor;
+            }
         }
     });
 
@@ -368,4 +369,4 @@ setInterval(() => {
 }, 1000 / 30);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Agario Server Smooth & Slow Motion running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Agario Mobile-Optimized Server running on port ${PORT}`));
