@@ -18,7 +18,10 @@ if (SUPABASE_URL && SUPABASE_KEY) {
     supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
+// حدود المضمار الداخلي
 const PITCH_BOUNDS = { minX: 500, maxX: 6700, minY: 1900, maxY: 5500 };
+
+// مواقع المدرجات (خارج حدود المضمار)
 const STAND_LOCATIONS = {
     "SY": { x: 1200, y: 1100 },
     "SA": { x: 2400, y: 1100 },
@@ -45,6 +48,15 @@ function getCountryFlag(code) {
     return flags[code] || "🚩";
 }
 
+// دالة لتوليد إحداثيات مضمونة خارج المضمار عند الابتلاع
+function getRandomOffPitchPosition(countryCode) {
+    const stand = STAND_LOCATIONS[countryCode] || STAND_LOCATIONS['SY'];
+    return {
+        x: stand.x + (Math.random() * 300 - 150),
+        y: stand.y + (Math.random() * 150 - 75)
+    };
+}
+
 async function loadOfflinePlayersToStands() {
     if (!supabase) return;
     try {
@@ -56,7 +68,7 @@ async function loadOfflinePlayersToStands() {
         if (users && !error) {
             users.forEach(u => {
                 const country = u.country_code || 'SY';
-                const stand = STAND_LOCATIONS[country] || STAND_LOCATIONS['SY'];
+                const pos = getRandomOffPitchPosition(country);
                 const balance = Number(u.points_balance || 0);
 
                 standVault[u.id] = {
@@ -65,8 +77,8 @@ async function loadOfflinePlayersToStands() {
                     points: balance,
                     tier: u.tier || 'Bronze',
                     inStand: true,
-                    x: stand.x + (Math.random() * 400 - 200),
-                    y: stand.y + (Math.random() * 200 - 100),
+                    x: pos.x,
+                    y: pos.y,
                     radius: calculateRadius(balance),
                     country: { code: country, flag: getCountryFlag(country) }
                 };
@@ -217,15 +229,14 @@ wss.on('connection', async (ws, req) => {
             delete activePlayers[socketId];
 
             disconnectedPlayer.inStand = true;
-            const stand = STAND_LOCATIONS[disconnectedPlayer.country?.code] || STAND_LOCATIONS['SY'];
-            disconnectedPlayer.x = stand.x + (Math.random() * 200 - 100);
-            disconnectedPlayer.y = stand.y + (Math.random() * 100 - 50);
+            const pos = getRandomOffPitchPosition(disconnectedPlayer.country?.code);
+            disconnectedPlayer.x = pos.x;
+            disconnectedPlayer.y = pos.y;
             standVault[socketId] = disconnectedPlayer;
         }
     });
 });
 
-// 🎯 شرط التمحور للابتلاع: السماح بالتداخل التام للكرات حتى يتطابق المركزين
 function checkCollisions() {
     const players = Object.values(activePlayers);
     
@@ -240,12 +251,9 @@ function checkCollisions() {
             const dy = p2.y - p1.y;
             const distance = Math.hypot(dx, dy) || 1;
 
-            // شرط التمحور والابتلاع:
-            // 1. الكرة الأكبر تبتلع الأصغر عندما تقترب المسافة بين مركزيهما إلى ما دون 45% من نصف قطر الكرة الأكبر (المركز فوق المركز تقريباً)
             if (p1.radius > p2.radius * 1.01 && distance < (p1.radius * 0.45)) {
                 executeEat(p1, p2);
             } 
-            // 2. فحص العكس بالنسبة لـ p2
             else if (p2.radius > p1.radius * 1.01 && distance < (p2.radius * 0.45)) {
                 executeEat(p2, p1);
             }
@@ -253,6 +261,7 @@ function checkCollisions() {
     }
 }
 
+// 🎯 عند الابتلاع: نقل الضحية فوراً لخارج المضمار (المدرجات)
 function executeEat(predator, victim) {
     predator.points += 1;
     predator.radius = calculateRadius(predator.points);
@@ -265,9 +274,13 @@ function executeEat(predator, victim) {
     delete activePlayers[victim.id];
     victim.inStand = true;
 
-    const stand = STAND_LOCATIONS[victim.country?.code] || STAND_LOCATIONS['SY'];
-    victim.x = stand.x + (Math.random() * 200 - 100);
-    victim.y = stand.y + (Math.random() * 100 - 50);
+    // الحصول على موقع جديد خارج حدود الملعب تماماً
+    const offPitchPos = getRandomOffPitchPosition(victim.country?.code);
+    victim.x = offPitchPos.x;
+    victim.y = offPitchPos.y;
+    victim.targetX = offPitchPos.x;
+    victim.targetY = offPitchPos.y;
+
     standVault[victim.id] = victim;
 
     wss.clients.forEach(client => {
@@ -316,4 +329,4 @@ setInterval(() => {
 }, 1000 / 30);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Agario Server Center-Overlap Eating Logic running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Agario Server with Off-Pitch Eaten Respawn running on port ${PORT}`));
