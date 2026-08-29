@@ -31,7 +31,7 @@
 </head>
 <body class="text-white relative w-screen h-screen select-none overflow-hidden">
 
-    <!-- لوحة المحفظة والشحن -->
+    <!-- لوحة المحفظة والشحن (الزاوية اليسرى العليا) -->
     <div id="walletHud" class="absolute top-16 left-4 z-40 glass-hud p-3 rounded-2xl border border-cyan-500/40 shadow-2xl flex flex-col gap-2 min-w-[170px]">
         <div class="flex items-center justify-between border-b border-cyan-500/20 pb-1.5">
             <span class="text-xs text-gray-300 font-bold">💎 المحفظة:</span>
@@ -39,7 +39,7 @@
         </div>
         <div class="flex flex-col gap-1.5">
             <button onclick="transferEnergyToWallet()" class="w-full bg-emerald-600/80 hover:bg-emerald-500 text-white font-bold py-1.5 px-3 rounded-xl text-xs transition active:scale-95 flex items-center justify-center gap-1 border border-emerald-400/30">
-                <span>📥</span> سحب الطاقة للمحفظة
+                <span>📥</span> سحب الطاقة للمحفظة (+1)
             </button>
             <div class="flex gap-1">
                 <button onclick="chargeOrbFromWallet(1)" class="w-full bg-cyan-600/80 hover:bg-cyan-500 text-white font-bold py-1.5 rounded-xl text-xs transition active:scale-95 border border-cyan-400/30">
@@ -208,22 +208,75 @@
         setTimeout(() => toast?.parentNode && toast.remove(), 2000);
     }
 
-    function transferEnergyToWallet() {
+    // --- محرك الصوت الخاص بالابتلاع عبر Web Audio API ---
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    let audioCtx = null;
+
+    function playEatSound() {
+        try {
+            if (!audioCtx) audioCtx = new AudioCtx();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(250, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(600, audioCtx.currentTime + 0.08);
+            osc.frequency.exponentialRampToValueAtTime(120, audioCtx.currentTime + 0.2);
+
+            gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.2);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.2);
+        } catch (e) {
+            console.error("Audio error:", e);
+        }
+    }
+
+    async function transferEnergyToWallet() {
         const me = activePlayers[currentUserId];
         if (!me || (me.points || 0) <= 0) {
             showNotification("لا يوجد طاقة في الكرة لسحبها!", "error");
             return;
         }
 
-        const energyToTransfer = Math.min(me.points, 10);
+        const energyToTransfer = 10;
+
+        me.points -= energyToTransfer;
+        userWalletBalance += energyToTransfer;
+        me.radius = calculateRadius(me.points);
+        updateWalletDisplay();
+
+        if (supabaseClient && !currentUserId.startsWith('guest_')) {
+            const { error } = await supabaseClient
+                .from('profiles')
+                .update({ points_balance: userWalletBalance })
+                .eq('id', currentUserId);
+
+            if (error) {
+                console.error("خطأ Supabase:", error);
+                me.points += energyToTransfer;
+                userWalletBalance -= energyToTransfer;
+                me.radius = calculateRadius(me.points);
+                updateWalletDisplay();
+                showNotification("فشل إيداع الطاقة في المحفظة!", "error");
+                return;
+            }
+        }
 
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: 'TRANSFER_TO_WALLET', amount: energyToTransfer }));
-            showNotification(`جاري تحويل ⚡ ${energyToTransfer} PWR إلى المحفظة...`, "success");
         }
+
+        showNotification(`تم تحويل ⚡ ${energyToTransfer} PWR إلى المحفظة!`, "success");
     }
 
-    function chargeOrbFromWallet(amount = 1) {
+    async function chargeOrbFromWallet(amount = 1) {
         if (userWalletBalance < amount) {
             showNotification("رصيد المحفظة غير كافٍ!", "error");
             return;
@@ -232,10 +285,33 @@
         const me = activePlayers[currentUserId];
         if (!me) return;
 
+        userWalletBalance -= amount;
+        me.points = (me.points || 0) + amount;
+        me.radius = calculateRadius(me.points);
+        updateWalletDisplay();
+
+        if (supabaseClient && !currentUserId.startsWith('guest_')) {
+            const { error } = await supabaseClient
+                .from('profiles')
+                .update({ points_balance: userWalletBalance })
+                .eq('id', currentUserId);
+
+            if (error) {
+                console.error("خطأ Supabase:", error);
+                userWalletBalance += amount;
+                me.points -= amount;
+                me.radius = calculateRadius(me.points);
+                updateWalletDisplay();
+                showNotification("فشل خصم الرصيد من المحفظة في قاعدة البيانات!", "error");
+                return;
+            }
+        }
+
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: 'CHARGE_ORB', amount: amount }));
-            showNotification(`جاري شحن الكرة بـ ⚡ ${amount} PWR...`, "success");
         }
+
+        showNotification(`تم شحن الكرة بـ ⚡ ${amount} PWR!`, "success");
     }
 
     let sidebarOpen = true;
@@ -286,7 +362,18 @@
     let selectedCountryCode = 'SY'; 
     let currentUserId = localStorage.getItem('dominion_user_id') || `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
 
-    let eatEffects = [];
+    let collisionFlashes = [];
+
+    function addCollisionFlash(x, y, color = '#00ffff') {
+        collisionFlashes.push({
+            x: x,
+            y: y,
+            radius: 30,
+            maxRadius: 350,
+            alpha: 1.0,
+            color: color
+        });
+    }
 
     function calculateRadius(points) {
         const val = Math.max(0, Number(points) || 0);
@@ -326,20 +413,23 @@
                         Object.keys(data.activePlayers || {}).forEach(id => {
                             const pData = data.activePlayers[id];
                             if (!activePlayers[id]) {
+                                const initialPoints = (id === currentUserId) ? 0 : (pData.points || 0);
                                 activePlayers[id] = { 
                                     ...pData, 
                                     x: pData.x, 
                                     y: pData.y, 
                                     targetX: pData.x, 
                                     targetY: pData.y, 
-                                    points: pData.points || 0, 
-                                    radius: calculateRadius(pData.points || 0) 
+                                    points: initialPoints, 
+                                    radius: calculateRadius(initialPoints) 
                                 };
                             } else {
                                 activePlayers[id].targetX = pData.x;
                                 activePlayers[id].targetY = pData.y;
-                                activePlayers[id].points = pData.points;
-                                activePlayers[id].radius = calculateRadius(pData.points);
+                                if (id !== currentUserId) {
+                                    activePlayers[id].points = pData.points;
+                                    activePlayers[id].radius = calculateRadius(pData.points);
+                                }
                                 activePlayers[id].isProtected = pData.isProtected;
                                 activePlayers[id].protectedUntil = pData.protectedUntil;
                                 activePlayers[id].name = pData.name;
@@ -354,20 +444,15 @@
                         if (data.standLocations) standLocations = data.standLocations;
                         if (data.standTotals) standTotals = data.standTotals;
 
-                        if (data.walletBalance !== undefined && data.selfId === currentUserId) {
-                            userWalletBalance = Number(data.walletBalance) || 0;
-                            updateWalletDisplay();
-                        }
-
                         if (data.incentivePool !== undefined) {
                             const poolValEl = document.getElementById('incentivePoolVal');
                             if (poolValEl) poolValEl.innerText = Number(data.incentivePool || 0);
                         }
 
                         updateLeaderboard();
-                    } else if (data.type === 'WALLET_UPDATE') {
-                        userWalletBalance = Number(data.walletBalance) || 0;
-                        updateWalletDisplay();
+                    } else if (data.type === 'COLLISION_EAT') {
+                        addCollisionFlash(data.x, data.y, '#00ffff');
+                        playEatSound();
                     } else if (data.type === 'EATEN') {
                         document.getElementById('respawnOverlay').classList.remove('hidden');
                         showNotification(`تم امتصاص طاقتك بواسطة ${data.eatenBy}`, 'error');
@@ -389,10 +474,28 @@
     }
 
     function updatePhysics() {
-        for (let i = eatEffects.length - 1; i >= 0; i--) {
-            const fx = eatEffects[i];
-            fx.radius += 8; fx.alpha -= 0.04;
-            if (fx.alpha <= 0 || fx.radius >= fx.maxRadius) eatEffects.splice(i, 1);
+        for (let i = collisionFlashes.length - 1; i >= 0; i--) {
+            const flash = collisionFlashes[i];
+            flash.radius += 10;
+            flash.alpha -= 0.04;
+            if (flash.alpha <= 0 || flash.radius >= flash.maxRadius) {
+                collisionFlashes.splice(i, 1);
+            }
+        }
+    }
+
+    function drawCollisionFlashes() {
+        for (let i = 0; i < collisionFlashes.length; i++) {
+            const flash = collisionFlashes[i];
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(flash.x, flash.y, flash.radius, 0, Math.PI * 2);
+            ctx.fillStyle = flash.color;
+            ctx.globalAlpha = flash.alpha;
+            ctx.shadowBlur = 60;
+            ctx.shadowColor = flash.color;
+            ctx.fill();
+            ctx.restore();
         }
     }
 
@@ -652,6 +755,23 @@
         const themeColor = countryLandmarks[countryCode]?.color || "#00f5ff";
         const isProtected = p.protectedUntil && (p.protectedUntil > Date.now());
 
+        // --- إضافة التوهج الخارجي المستمد من المخازن ---
+        const rawOrbPoints = Number(p.points || 0);
+        const orbEnergyMultiplier = Math.min(5.0, 1.0 + Math.pow(rawOrbPoints, 0.45) * 0.08);
+        const orbGlowRadius = radius * (1.3 + orbEnergyMultiplier * 0.25);
+
+        let orbGlowGrad = ctx.createRadialGradient(0, 0, radius * 0.3, 0, 0, orbGlowRadius);
+        orbGlowGrad.addColorStop(0, themeColor);
+        orbGlowGrad.addColorStop(0.5, themeColor);
+        orbGlowGrad.addColorStop(1, "rgba(0,0,0,0)");
+
+        ctx.fillStyle = orbGlowGrad;
+        ctx.globalAlpha = Math.min(0.85, 0.35 + (orbEnergyMultiplier * 0.1));
+        ctx.beginPath();
+        ctx.arc(0, 0, orbGlowRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1.0;
+
         if (isProtected) {
             ctx.beginPath();
             ctx.arc(0, 0, radius + 25, 0, Math.PI * 2);
@@ -734,6 +854,7 @@
         drawStands();
 
         Object.values(activePlayers).forEach(p => drawOrb(p));
+        drawCollisionFlashes();
 
         ctx.restore();
         requestAnimationFrame(render);
