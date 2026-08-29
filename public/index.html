@@ -131,14 +131,13 @@
 
     let staticUsers = [];
 
-    // الربط الصحيح مع جدول profiles وأعمدته
     async function loadRealUsersFromDB() {
         if (!supabaseClient) return;
 
         try {
             const { data, error } = await supabaseClient
                 .from('profiles') 
-                .select('id, username, display_name, points_balance, tier');
+                .select('*');
 
             if (!error && data) {
                 staticUsers = data.map((u, index) => {
@@ -148,15 +147,13 @@
                         name: u.display_name || u.username || "لاعب",
                         points: balanceVal,
                         tier: u.tier || "Bronze",
-                        country: { 
-                            code: "SY", 
-                            flag: "🇸🇾" 
-                        },
+                        country: { code: "SY", flag: "🇸🇾" },
                         radius: 40,
                         x: 1200 + (index % 12) * 420,
                         y: 2200 + Math.floor(index / 12) * 320
                     };
                 });
+                syncMyOrbWithProfile();
                 updateLeaderboard();
             }
         } catch (err) {
@@ -197,6 +194,37 @@
         }
     }
 
+    function syncMyOrbWithProfile() {
+        if (!currentUserProfile) return;
+        
+        const myKey = selfId || currentUserId;
+        const balanceVal = Number(currentUserProfile.points_balance || 0);
+        const nameVal = currentUserProfile.display_name || currentUserProfile.username || 'أنا';
+
+        if (!activePlayers[myKey]) {
+            activePlayers[myKey] = {
+                id: myKey,
+                x: 3600,
+                y: 3700,
+                radius: 40,
+                points: balanceVal,
+                name: nameVal,
+                tier: currentUserProfile.tier || 'Bronze',
+                country: { code: "SY", flag: "🇸🇾" }
+            };
+        } else {
+            activePlayers[myKey].points = balanceVal;
+            activePlayers[myKey].name = nameVal;
+            activePlayers[myKey].tier = currentUserProfile.tier || activePlayers[myKey].tier;
+        }
+
+        const staticIndex = staticUsers.findIndex(u => u.id === currentUserId);
+        if (staticIndex !== -1) {
+            staticUsers[staticIndex].points = balanceVal;
+            staticUsers[staticIndex].name = nameVal;
+        }
+    }
+
     function initWebSocket(userId) {
         if (socket) socket.close();
 
@@ -211,20 +239,16 @@
                 const data = JSON.parse(event.data);
                 if (data.type === 'INIT') {
                     selfId = data.selfId;
+                    syncMyOrbWithProfile();
                 } else if (data.type === 'SYNC') {
                     activePlayers = data.activePlayers || {};
                     standVault = data.standVault || {};
                     dynamicStands = data.dynamicStands || {};
                     
-                    const myKey = selfId || userId;
-                    const myOrb = activePlayers[myKey] || standVault[myKey] || activePlayers[selfId] || standVault[selfId];
-                    
-                    if (myOrb && currentUserProfile) {
-                        myOrb.name = currentUserProfile.display_name || currentUserProfile.username || myOrb.name;
-                        myOrb.points = Number(currentUserProfile.points_balance || 0);
-                        myOrb.tier = currentUserProfile.tier || myOrb.tier;
-                    }
+                    syncMyOrbWithProfile();
 
+                    const myKey = selfId || userId;
+                    const myOrb = activePlayers[myKey] || standVault[myKey];
                     if (myOrb) {
                         camera.x += (myOrb.x - camera.x) * 0.1;
                         camera.y += (myOrb.y - camera.y) * 0.1;
@@ -241,18 +265,23 @@
         }
     }
 
-    // جلب بيانات ملف المستخدم من profiles
     async function fetchUserProfile(uid) {
         if (!supabaseClient || !uid) return;
-        const { data, error } = await supabaseClient
-            .from('profiles')
-            .select('id, username, display_name, points_balance, tier')
-            .eq('id', uid)
-            .single();
+        try {
+            const { data, error } = await supabaseClient
+                .from('profiles')
+                .select('*')
+                .eq('id', uid)
+                .maybeSingle();
 
-        if (!error && data) {
-            currentUserProfile = data;
-            updateAuthUI();
+            if (!error && data) {
+                currentUserProfile = data;
+                updateAuthUI();
+                syncMyOrbWithProfile();
+                updateLeaderboard();
+            }
+        } catch (e) {
+            console.error("Fetch profile error:", e);
         }
     }
 
@@ -364,22 +393,13 @@
             const myKey = selfId || currentUserId;
             let targetOrb = activePlayers[myKey] || standVault[myKey];
             if (!targetOrb) {
-                targetOrb = { 
-                    id: myKey, 
-                    x: 3600, 
-                    y: 3700, 
-                    radius: 40, 
-                    points: Number(currentUserProfile?.points_balance || 0), 
-                    name: currentUserProfile?.display_name || currentUserProfile?.username || 'أنا',
-                    tier: currentUserProfile?.tier || 'Bronze'
-                };
-                activePlayers[myKey] = targetOrb;
-            } else if (currentUserProfile) {
-                targetOrb.points = Number(currentUserProfile.points_balance || 0);
-                targetOrb.tier = currentUserProfile.tier || targetOrb.tier;
+                syncMyOrbWithProfile();
+                targetOrb = activePlayers[myKey];
             }
-            targetOrb.x += (boundedPos.x - targetOrb.x) * 0.15;
-            targetOrb.y += (boundedPos.y - targetOrb.y) * 0.15;
+            if (targetOrb) {
+                targetOrb.x += (boundedPos.x - targetOrb.x) * 0.15;
+                targetOrb.y += (boundedPos.y - targetOrb.y) * 0.15;
+            }
         }
     }
 
