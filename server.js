@@ -21,7 +21,9 @@ if (SUPABASE_URL && SUPABASE_KEY) {
 // 🏛️ أبعاد الساحة الكبرى الفعلية
 const PITCH_BOUNDS = { minX: 0, maxX: 14000, minY: 0, maxY: 8000 };
 
-let incentivePool = 100;
+// 🏆 خزان التحفيز ينطلق من 0 ويملؤه لعب الزوار
+let incentivePool = 0; 
+let botCounter = 0;
 
 const STAND_LOCATIONS = {
     "SY": { x: 3500,  y: -500,  width: 2500, height: 400, edge: 'TOP' },
@@ -116,8 +118,10 @@ function getStandTotals() {
     return totals;
 }
 
-// 🤖 إنشاء البوتات الابتدائية مع تفعيل درع الحماية لمدة 3 ثوانٍ
-function spawnBot(botId, initialPoints = 50) {
+// 🤖 دالة استدعاء بوت من خزان التحفيز بدقة وتفعيل حماية 5 ثوانٍ
+function spawnBotFromPool(initialPoints = 10) {
+    botCounter++;
+    const botId = `bot_pool_${botCounter}`;
     const randomName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
     const randomCountry = COUNTRIES[Math.floor(Math.random() * COUNTRIES.length)];
     
@@ -130,7 +134,6 @@ function spawnBot(botId, initialPoints = 50) {
         isBot: true,
         name: randomName,
         points: initialPoints,
-        eatenPool: 0,
         tier: 'Gold',
         country: getCountryInfo(randomCountry),
         x: pos.x,
@@ -140,12 +143,16 @@ function spawnBot(botId, initialPoints = 50) {
         changeTimer: Math.floor(Math.random() * 60) + 30,
         radius: radius,
         isProtected: true,
-        protectedUntil: Date.now() + 3000 // حماية وتوهج لمدة 3 ثوانٍ عند النزول
+        protectedUntil: Date.now() + 5000 // 🛡️ غير قابلة للابتلاع لمدة 5 ثوانٍ حتى تأخذ موقعها
     };
 }
 
-for (let i = 1; i <= 15; i++) {
-    spawnBot(`bot_${i}`, Math.floor(Math.random() * 200) + 20);
+// 🎯 دالة فحص وتقسيم خزان التحفيز
+function checkIncentivePool() {
+    while (incentivePool >= 10) {
+        incentivePool -= 10;
+        spawnBotFromPool(10);
+    }
 }
 
 async function loadOfflinePlayersToStands() {
@@ -259,7 +266,7 @@ wss.on('connection', async (ws, req) => {
     player.targetX = player.x;
     player.targetY = player.y;
     player.isProtected = true;
-    player.protectedUntil = Date.now() + 3000; // 🛡️ درع حماية للمستخدم عند الدخول لأول مرة
+    player.protectedUntil = Date.now() + 5000; // 🛡️ درع حماية عند الدخول لمدة 5 ثوانٍ
 
     activePlayers[socketId] = player;
 
@@ -290,7 +297,7 @@ wss.on('connection', async (ws, req) => {
                     p.targetX = spawnPos.x;
                     p.targetY = spawnPos.y;
                     p.isProtected = true;
-                    p.protectedUntil = Date.now() + 3000; // 🛡️ درع حماية لمدة 3 ثوانٍ عند إعادة الدخول
+                    p.protectedUntil = Date.now() + 5000; // 🛡️ حماية لمدة 5 ثوانٍ عند الدخول
                     
                     activePlayers[socketId] = p;
                 }
@@ -346,7 +353,7 @@ function checkCollisions() {
 
             if (!p1 || !p2) continue;
             
-            // 🛑 منع الابتلاع إذا كان أحدهما في فترة الحماية (3 ثوانٍ)
+            // 🛑 منع الابتلاع إذا كان أحدهما في فترة الحماية (5 ثوانٍ)
             if ((p1.isProtected && now < p1.protectedUntil) || (p2.isProtected && now < p2.protectedUntil)) {
                 continue;
             }
@@ -372,55 +379,55 @@ function checkCollisions() {
 }
 
 function executeEat(predator, victim) {
-    // 🎯 حساب مقدار النقاط المكتسبة/المفقودة بناءً على نسبة معينة من رصيد الضحية (مثلاً 20% أو 1 نقطة كحد أدنى)
-    const pointsStolen = Math.max(1, Math.floor(victim.points * 0.20)); 
+    const delta = 1; // 🎯 أي ابتلاع يستدعي خسارة نقطة واحدة وربح نقطة للطرف المقابل
 
-    // تحديث المفترس
-    if (predator.isBot) {
-        predator.eatenPool = (predator.eatenPool || 0) + pointsStolen;
-        predator.points += pointsStolen;
-        predator.radius = calculateRadius(predator.points);
-    } else if (isGuestPlayer(predator)) {
-        predator.points = (predator.points || 0) + pointsStolen;
-        predator.radius = calculateRadius(predator.points);
-    } else {
-        predator.points += pointsStolen;
-        predator.radius = calculateRadius(predator.points);
-        updatePointsSafely(predator.id, pointsStolen);
+    // 1. زيادة نقاط المفترس +1
+    predator.points = (predator.points || 0) + delta;
+    predator.radius = calculateRadius(predator.points);
+
+    // 2. تحديث الخزان إذا كان المفترس زائر واستوعب كرة أصغر
+    if (isGuestPlayer(predator)) {
+        incentivePool += delta; // 🏆 يملأ الخزان لعب الزوار (+1)
+        checkIncentivePool();   // فحص الوصول لـ 10 نقاط لتوليد بوت جديد
+    } else if (!predator.isBot) {
+        updatePointsSafely(predator.id, delta);
     }
 
-    // تحديث الضحية
-    if (victim.isBot) {
-        const botId = victim.id;
-        delete activePlayers[botId];
-        setTimeout(() => spawnBot(botId, 30), 5000); 
-    } else {
-        victim.points = Math.max(0, victim.points - pointsStolen);
-        victim.radius = calculateRadius(victim.points);
+    // 3. خصم نقطة من الضحية (-1)
+    victim.points = Math.max(0, (victim.points || 0) - delta);
+    victim.radius = calculateRadius(victim.points);
 
-        updatePointsSafely(victim.id, -pointsStolen);
+    if (!victim.isBot && !isGuestPlayer(victim)) {
+        updatePointsSafely(victim.id, -delta);
+    }
 
-        delete activePlayers[victim.id];
-        victim.inStand = true;
+    // 4. إذا أصبحت نقاط الضحية 0 أو كانت بوت تم ابتلاعه بالكامل
+    if (victim.points <= 0 || victim.isBot) {
+        if (victim.isBot) {
+            delete activePlayers[victim.id];
+        } else {
+            delete activePlayers[victim.id];
+            victim.inStand = true;
 
-        const offPitchPos = getRandomOffPitchPosition(victim.country?.code);
-        victim.x = offPitchPos.x;
-        victim.y = offPitchPos.y;
-        victim.targetX = offPitchPos.x;
-        victim.targetY = offPitchPos.y;
+            const offPitchPos = getRandomOffPitchPosition(victim.country?.code);
+            victim.x = offPitchPos.x;
+            victim.y = offPitchPos.y;
+            victim.targetX = offPitchPos.x;
+            victim.targetY = offPitchPos.y;
 
-        standVault[victim.id] = victim;
+            standVault[victim.id] = victim;
 
-        wss.clients.forEach(client => {
-            if (client.id === victim.id && client.readyState === WebSocket.OPEN) {
-                client.send(JSON.stringify({
-                    type: 'EATEN',
-                    eatenBy: predator.name,
-                    lostPoints: pointsStolen,
-                    remainingPoints: victim.points
-                }));
-            }
-        });
+            wss.clients.forEach(client => {
+                if (client.id === victim.id && client.readyState === WebSocket.OPEN) {
+                    client.send(JSON.stringify({
+                        type: 'EATEN',
+                        eatenBy: predator.name,
+                        lostPoints: delta,
+                        remainingPoints: victim.points
+                    }));
+                }
+            });
+        }
     }
 }
 
@@ -432,7 +439,7 @@ setInterval(() => {
     allEntities.forEach(p => {
         const r = p.radius || 60;
 
-        // تحديث حالة الحماية والوميض
+        // تحديث حالة الحماية
         if (p.isProtected && now >= p.protectedUntil) {
             p.isProtected = false;
         }
@@ -445,25 +452,23 @@ setInterval(() => {
             let dangerFound = false;
             let targetFound = false;
 
-            // 🧠 منطق ذكاء اصطناعي واقعي للبوتات
+            // 🧠 ذكاء الاصطناعي الخاص بالبوتات
             for (let other of allEntities) {
-                if (other.id === p.id || other.isBot) continue; // تجاهل البوتات الأخرى
+                if (other.id === p.id || other.isBot) continue;
 
                 const dx = other.x - p.x;
                 const dy = other.y - p.y;
                 const dist = Math.hypot(dx, dy);
 
-                // 🏃‍♂️ 1. الهروب من الكرات الكبيرة (التي تتفوق عليها حسانياً)
                 if (other.radius > p.radius * 1.05) {
                     const safeDistance = p.radius + other.radius + 500;
                     if (dist < safeDistance && dist > 0) {
                         dangerFound = true;
                         const force = (safeDistance - dist) / safeDistance;
-                        fleeX -= (dx / dist) * force; // الاتجاه المعاكس للكرة الكبيرة
+                        fleeX -= (dx / dist) * force;
                         fleeY -= (dy / dist) * force;
                     }
                 } 
-                // 🎯 2. مطاردة الكرات الأصغر حسانياً فقط
                 else if (p.radius > other.radius * 1.05 && !other.isProtected) {
                     const huntDistance = 800;
                     if (dist < huntDistance && dist > 0) {
@@ -474,7 +479,6 @@ setInterval(() => {
                 }
             }
 
-            // تطبيق متجهات الحركة بناءً على الأولوية (الهروب أولاً ثم المطاردة)
             if (dangerFound) {
                 const len = Math.hypot(fleeX, fleeY) || 1;
                 p.vx = (p.vx * 0.6) + ((fleeX / len) * 0.4);
@@ -484,7 +488,6 @@ setInterval(() => {
                 p.vx = (p.vx * 0.7) + ((chaseX / len) * 0.3);
                 p.vy = (p.vy * 0.7) + ((chaseY / len) * 0.3);
             } else {
-                // تجوال عشوائي سلس
                 p.changeTimer--;
                 if (p.changeTimer <= 0) {
                     const randomAngle = Math.random() * Math.PI * 2;
@@ -498,7 +501,6 @@ setInterval(() => {
                 }
             }
 
-            // تطبيع المتجه للمحافظة على سرعة ثابتة وسلسة
             const moveLen = Math.hypot(p.vx, p.vy) || 1;
             p.vx /= moveLen;
             p.vy /= moveLen;
@@ -507,7 +509,6 @@ setInterval(() => {
             p.x += p.vx * botSpeed;
             p.y += p.vy * botSpeed;
 
-            // الارتداد الناعم من جدران الملعب
             if (p.x <= PITCH_BOUNDS.minX + r) {
                 p.x = PITCH_BOUNDS.minX + r;
                 p.vx = Math.abs(p.vx);
@@ -527,7 +528,6 @@ setInterval(() => {
             p.targetX = p.x;
             p.targetY = p.y;
         } else {
-            // حركة اللاعب الحقيقي
             if (typeof p.targetX === 'number' && typeof p.targetY === 'number') {
                 const dx = p.targetX - p.x;
                 const dy = p.targetY - p.y;
