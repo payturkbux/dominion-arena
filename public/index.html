@@ -2,7 +2,6 @@
 <html class="dark" lang="ar" dir="rtl">
 <head>
     <meta charset="utf-8"/>
-    <!-- 📱 السماح بالزوم والتكبير بمرونة على شاشات الهواتف -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.1, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover"/>
     <title>Dominion Arena Stadium</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -26,8 +25,6 @@
             -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.12);
         }
-        
-        /* ⚡ تأثير الومضة للرسالة */
         @keyframes flashPop {
             0% { transform: translate(-50%, -20px) scale(0.8); opacity: 0; }
             15% { transform: translate(-50%, 0) scale(1.05); opacity: 1; }
@@ -38,7 +35,6 @@
         .flash-toast {
             animation: flashPop 2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
-
         .sidebar-transition {
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
         }
@@ -46,7 +42,6 @@
 </head>
 <body class="text-white relative w-screen h-screen select-none overflow-hidden">
 
-    <!-- 🚩 نافذة اختيار الدولة -->
     <div id="countrySelectModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
         <div class="glass-hud p-6 sm:p-8 rounded-3xl w-full max-w-md border border-cyan-500/50 text-center shadow-2xl space-y-5">
             <div class="text-5xl">🚩</div>
@@ -67,7 +62,6 @@
         </div>
     </div>
 
-    <!-- ⚡ حاوية رسائل الومضة الموحدة -->
     <div id="toastContainer" class="fixed top-20 left-1/2 z-50 pointer-events-none flex flex-col items-center gap-2 w-full max-w-md px-4"></div>
 
     <div id="respawnOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
@@ -156,7 +150,6 @@
         console.error("Supabase Init Error:", e);
     }
 
-    // ⚡ دالة الرسالة الشفافة الومضة
     function showNotification(message, type = 'error') {
         const container = document.getElementById('toastContainer');
         if (!container) return;
@@ -219,7 +212,6 @@
     window.addEventListener('resize', resize);
     resize();
 
-    // 🏟️ أبعاد الساحة
     const PITCH_BOUNDS = { minX: 0, maxX: 14000, minY: 0, maxY: 8000 };
     const centerX = (PITCH_BOUNDS.maxX + PITCH_BOUNDS.minX) / 2;
     const centerY = (PITCH_BOUNDS.maxY + PITCH_BOUNDS.minY) / 2;
@@ -229,7 +221,6 @@
     const MAX_ZOOM = 2.50;
 
     let activePlayers = {};
-    let standVault = {};
     let standLocations = {};
     let standTotals = {}; 
     let localTargetPos = { x: centerX, y: centerY };
@@ -307,7 +298,6 @@
                             }
                         });
 
-                        standVault = data.standVault || {};
                         if (data.standLocations) standLocations = data.standLocations;
                         if (data.standTotals) standTotals = data.standTotals;
 
@@ -481,7 +471,7 @@
         const listEl = document.getElementById('leaderboardList');
         if (!listEl) return;
         
-        let allEntities = [...Object.values(activePlayers), ...Object.values(standVault)];
+        let allEntities = [...Object.values(activePlayers)];
         allEntities.sort((a, b) => (Number(b.points) || 0) - (Number(a.points) || 0));
         const top5 = allEntities.slice(0, 5);
 
@@ -505,6 +495,7 @@
         }).join('');
     }
 
+    // 🏆 إظهار المدرجات ككتلة إجمالية فقط وبدون عرض أي كرات غير نشطة
     function drawStands() {
         if (!standLocations) return;
 
@@ -548,7 +539,7 @@
 
             ctx.font = "bold 65px 'Sora'";
             ctx.fillStyle = "#00ffff";
-            ctx.fillText(`إجمالي: ${totalBalance} $`, stand.x, stand.y + 55);
+            ctx.fillText(`إجمالي الكتلة: ${totalBalance} $`, stand.x, stand.y + 55);
 
             ctx.restore();
         });
@@ -671,7 +662,7 @@
         updatePhysics();
 
         const dpr = window.devicePixelRatio || 1;
-        const me = activePlayers[currentUserId] || standVault[currentUserId];
+        const me = activePlayers[currentUserId];
         
         if (me) {
             camera.x += (me.x - camera.x) * 0.1;
@@ -692,7 +683,7 @@
         drawStands();
         drawEatEffects();
 
-        Object.values(standVault).forEach(p => drawOrb(p));
+        // 🎯 رسم الكرات النشطة فقط في الساحة
         Object.values(activePlayers).forEach(p => drawOrb(p));
 
         ctx.restore();

@@ -18,10 +18,8 @@ if (SUPABASE_URL && SUPABASE_KEY) {
     supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
-// 🏛️ أبعاد الساحة الكبرى الفعلية
 const PITCH_BOUNDS = { minX: 0, maxX: 14000, minY: 0, maxY: 8000 };
 
-// 🏆 خزان التحفيز ينطلق من 0 ويملؤه لعب الزوار
 let incentivePool = 0; 
 let botCounter = 0;
 
@@ -74,17 +72,6 @@ function isGuestPlayer(player) {
     return !player || String(player.id).startsWith('guest_');
 }
 
-function getRandomOffPitchPosition(countryCode) {
-    const stand = STAND_LOCATIONS[countryCode] || STAND_LOCATIONS['SY'];
-    const halfW = (stand.width || 2500) / 2;
-    const halfH = (stand.height || 400) / 2;
-
-    return {
-        x: stand.x + (Math.random() * (halfW * 1.6) - halfW * 0.8),
-        y: stand.y + (Math.random() * (halfH * 1.6) - halfH * 0.8)
-    };
-}
-
 function getRandomOnPitchPosition(radius) {
     const r = radius || 60;
     const minX = PITCH_BOUNDS.minX + r;
@@ -118,7 +105,6 @@ function getStandTotals() {
     return totals;
 }
 
-// 🤖 دالة استدعاء بوت من خزان التحفيز
 function spawnBotFromPool(initialPoints = 10) {
     botCounter++;
     const botId = `bot_pool_${botCounter}`;
@@ -147,7 +133,6 @@ function spawnBotFromPool(initialPoints = 10) {
     };
 }
 
-// 🎯 دالة فحص وتقسيم خزان التحفيز
 function checkIncentivePool() {
     while (incentivePool >= 10) {
         incentivePool -= 10;
@@ -166,7 +151,6 @@ async function loadOfflinePlayersToStands() {
         if (users && !error) {
             users.forEach(u => {
                 const country = u.country_code || 'SY';
-                const pos = getRandomOffPitchPosition(country);
                 const balance = Number(u.points_balance || 0);
 
                 standVault[u.id] = {
@@ -175,9 +159,6 @@ async function loadOfflinePlayersToStands() {
                     points: balance,
                     tier: u.tier || 'Bronze',
                     inStand: true,
-                    x: pos.x,
-                    y: pos.y,
-                    radius: calculateRadius(balance),
                     country: getCountryInfo(country)
                 };
             });
@@ -187,7 +168,6 @@ async function loadOfflinePlayersToStands() {
     }
 }
 
-// 🛠️ دالة التحديث الآمن الآني المعالجة (Atomic RPC + Instant Memory Update)
 async function updatePointsSafely(userId, delta) {
     if (!supabase || !userId || userId.startsWith('guest_') || userId.startsWith('bot_')) return;
     
@@ -196,7 +176,6 @@ async function updatePointsSafely(userId, delta) {
         activePlayers[userId].radius = calculateRadius(activePlayers[userId].points);
     } else if (standVault[userId]) {
         standVault[userId].points = Math.max(0, (standVault[userId].points || 0) + delta);
-        standVault[userId].radius = calculateRadius(standVault[userId].points);
     }
 
     try {
@@ -238,7 +217,7 @@ wss.on('connection', async (ws, req) => {
     }
 
     const isGuest = socketId.startsWith('guest_');
-    const balance = isGuest ? 100 : Number(profileData?.points_balance || 0);
+    const balance = isGuest ? 10 : Number(profileData?.points_balance || 0);
     const country = profileData?.country_code || selectedCountry;
     const initRadius = calculateRadius(balance);
     const initialSpawn = getRandomOnPitchPosition(initRadius);
@@ -256,7 +235,7 @@ wss.on('connection', async (ws, req) => {
 
     delete standVault[socketId];
     player.inStand = false;
-    player.isBot = false; // تأكيد صريح أن الزائر لاعب حقيقي
+    player.isBot = false;
     player.targetX = player.x;
     player.targetY = player.y;
     player.isProtected = true;
@@ -314,9 +293,6 @@ wss.on('connection', async (ws, req) => {
             delete activePlayers[socketId];
 
             disconnectedPlayer.inStand = true;
-            const pos = getRandomOffPitchPosition(disconnectedPlayer.country?.code);
-            disconnectedPlayer.x = pos.x;
-            disconnectedPlayer.y = pos.y;
             standVault[socketId] = disconnectedPlayer;
         }
     });
@@ -334,7 +310,6 @@ wss.on('close', () => {
     clearInterval(pingInterval);
 });
 
-// ⚔️ فحص التصادمات وقواعد الابتلاع المباشرة
 function checkCollisions() {
     const players = Object.values(activePlayers);
     const count = players.length;
@@ -371,7 +346,6 @@ function checkCollisions() {
                 }
 
                 if (predator && victim) {
-                    // 🛡️ حماية الزائر: إذا كانت الضحية زائراً والمفترس ليس بوتاً، يتم إلغاء الابتلاع
                     if (isGuestPlayer(victim) && !predator.isBot) {
                         continue; 
                     }
@@ -382,13 +356,10 @@ function checkCollisions() {
     }
 }
 
-// ⚡ تنفيذ عملية الابتلاع وتحديث النقاط المباشر
 function executeEat(predator, victim) {
     const delta = 1;
 
-    // --- تحديث المفترس ---
     if (isGuestPlayer(predator)) {
-        // نقاط الزائر تذهب مباشرة إلى صندوق التحفيز
         incentivePool += delta; 
         checkIncentivePool();   
     } else if (!predator.isBot) {
@@ -398,7 +369,6 @@ function executeEat(predator, victim) {
         predator.radius = calculateRadius(predator.points);
     }
 
-    // --- تحديث الضحية ---
     if (!victim.isBot && !isGuestPlayer(victim)) {
         updatePointsSafely(victim.id, -delta);
     } else {
@@ -406,19 +376,12 @@ function executeEat(predator, victim) {
         victim.radius = calculateRadius(victim.points);
     }
 
-    // --- خروج/إعادة توجيه الضحية ---
     if (victim.points <= 0 || victim.isBot) {
         if (victim.isBot) {
             delete activePlayers[victim.id];
         } else {
             delete activePlayers[victim.id];
             victim.inStand = true;
-
-            const offPitchPos = getRandomOffPitchPosition(victim.country?.code);
-            victim.x = offPitchPos.x;
-            victim.y = offPitchPos.y;
-            victim.targetX = offPitchPos.x;
-            victim.targetY = offPitchPos.y;
 
             standVault[victim.id] = victim;
 
@@ -436,7 +399,6 @@ function executeEat(predator, victim) {
     }
 }
 
-// 🎯 حلقة التحديث الرئيسية (30 FPS)
 setInterval(() => {
     const allEntities = Object.values(activePlayers);
     const now = Date.now();
@@ -448,7 +410,6 @@ setInterval(() => {
             p.isProtected = false;
         }
 
-        // الحركة المعالجة: البوتات فقط هي من تتحرك بالذكاء الاصطناعي
         if (p.isBot) {
             let fleeX = 0;
             let fleeY = 0;
@@ -532,7 +493,6 @@ setInterval(() => {
             p.targetX = p.x;
             p.targetY = p.y;
         } else {
-            // جميع اللاعبين الطبيعيين (بما فيهم الزائر) يتحركون حسب إشارات الإحداثيات الموجهة
             if (typeof p.targetX === 'number' && typeof p.targetY === 'number') {
                 const dx = p.targetX - p.x;
                 const dy = p.targetY - p.y;
@@ -555,7 +515,6 @@ setInterval(() => {
     const payload = JSON.stringify({
         type: 'SYNC',
         activePlayers,
-        standVault,
         standLocations: STAND_LOCATIONS,
         standTotals: getStandTotals(),
         incentivePool: incentivePool
