@@ -116,7 +116,7 @@ function getStandTotals() {
     return totals;
 }
 
-// 🤖 إنشاء البوتات الابتدائية بنظام متجهات سلس
+// 🤖 إنشاء البوتات الابتدائية مع تفعيل درع الحماية لمدة 3 ثوانٍ
 function spawnBot(botId, initialPoints = 50) {
     const randomName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
     const randomCountry = COUNTRIES[Math.floor(Math.random() * COUNTRIES.length)];
@@ -138,7 +138,9 @@ function spawnBot(botId, initialPoints = 50) {
         vx: Math.cos(initialAngle),
         vy: Math.sin(initialAngle),
         changeTimer: Math.floor(Math.random() * 60) + 30,
-        radius: radius
+        radius: radius,
+        isProtected: true,
+        protectedUntil: Date.now() + 3000 // حماية وتوهج لمدة 3 ثوانٍ عند النزول
     };
 }
 
@@ -256,6 +258,8 @@ wss.on('connection', async (ws, req) => {
     player.inStand = false;
     player.targetX = player.x;
     player.targetY = player.y;
+    player.isProtected = true;
+    player.protectedUntil = Date.now() + 3000; // 🛡️ درع حماية للمستخدم عند الدخول لأول مرة
 
     activePlayers[socketId] = player;
 
@@ -285,6 +289,8 @@ wss.on('connection', async (ws, req) => {
                     p.y = spawnPos.y;
                     p.targetX = spawnPos.x;
                     p.targetY = spawnPos.y;
+                    p.isProtected = true;
+                    p.protectedUntil = Date.now() + 3000; // 🛡️ درع حماية لمدة 3 ثوانٍ عند إعادة الدخول
                     
                     activePlayers[socketId] = p;
                 }
@@ -327,10 +333,11 @@ wss.on('close', () => {
     clearInterval(pingInterval);
 });
 
-// ⚔️ فحص التصادمات وقواعد الابتلاع (منع البوتات من التهام بعضها)
+// ⚔️ فحص التصادمات وقواعد الابتلاع الحقيقية
 function checkCollisions() {
     const players = Object.values(activePlayers);
     const count = players.length;
+    const now = Date.now();
     
     for (let i = 0; i < count; i++) {
         for (let j = i + 1; j < count; j++) {
@@ -339,6 +346,11 @@ function checkCollisions() {
 
             if (!p1 || !p2) continue;
             
+            // 🛑 منع الابتلاع إذا كان أحدهما في فترة الحماية (3 ثوانٍ)
+            if ((p1.isProtected && now < p1.protectedUntil) || (p2.isProtected && now < p2.protectedUntil)) {
+                continue;
+            }
+
             // 🛑 منع البوتات من أكل بعضها نهائياً
             if (p1.isBot && p2.isBot) continue;
 
@@ -360,30 +372,33 @@ function checkCollisions() {
 }
 
 function executeEat(predator, victim) {
-    const pointDelta = 1;
+    // 🎯 حساب مقدار النقاط المكتسبة/المفقودة بناءً على نسبة معينة من رصيد الضحية (مثلاً 20% أو 1 نقطة كحد أدنى)
+    const pointsStolen = Math.max(1, Math.floor(victim.points * 0.20)); 
 
+    // تحديث المفترس
     if (predator.isBot) {
-        predator.eatenPool = (predator.eatenPool || 0) + 1;
-        predator.points += pointDelta;
+        predator.eatenPool = (predator.eatenPool || 0) + pointsStolen;
+        predator.points += pointsStolen;
         predator.radius = calculateRadius(predator.points);
     } else if (isGuestPlayer(predator)) {
-        predator.points = (predator.points || 0) + pointDelta;
+        predator.points = (predator.points || 0) + pointsStolen;
         predator.radius = calculateRadius(predator.points);
     } else {
-        predator.points += pointDelta;
+        predator.points += pointsStolen;
         predator.radius = calculateRadius(predator.points);
-        updatePointsSafely(predator.id, pointDelta);
+        updatePointsSafely(predator.id, pointsStolen);
     }
 
+    // تحديث الضحية
     if (victim.isBot) {
         const botId = victim.id;
         delete activePlayers[botId];
         setTimeout(() => spawnBot(botId, 30), 5000); 
     } else {
-        victim.points = Math.max(0, victim.points - pointDelta);
+        victim.points = Math.max(0, victim.points - pointsStolen);
         victim.radius = calculateRadius(victim.points);
 
-        updatePointsSafely(victim.id, -pointDelta);
+        updatePointsSafely(victim.id, -pointsStolen);
 
         delete activePlayers[victim.id];
         victim.inStand = true;
@@ -401,6 +416,7 @@ function executeEat(predator, victim) {
                 client.send(JSON.stringify({
                     type: 'EATEN',
                     eatenBy: predator.name,
+                    lostPoints: pointsStolen,
                     remainingPoints: victim.points
                 }));
             }
@@ -411,40 +427,64 @@ function executeEat(predator, victim) {
 // 🎯 حلقة التحديث الرئيسية (30 FPS)
 setInterval(() => {
     const allEntities = Object.values(activePlayers);
+    const now = Date.now();
 
     allEntities.forEach(p => {
         const r = p.radius || 60;
 
+        // تحديث حالة الحماية والوميض
+        if (p.isProtected && now >= p.protectedUntil) {
+            p.isProtected = false;
+        }
+
         if (p.isBot) {
             let fleeX = 0;
             let fleeY = 0;
+            let chaseX = 0;
+            let chaseY = 0;
             let dangerFound = false;
+            let targetFound = false;
 
-            // 1. البحث عن اللاعبين البشر الأكثر حجماً للهروب منهم سلسياً
+            // 🧠 منطق ذكاء اصطناعي واقعي للبوتات
             for (let other of allEntities) {
                 if (other.id === p.id || other.isBot) continue; // تجاهل البوتات الأخرى
 
-                if (other.radius > p.radius * 1.05) {
-                    const dx = p.x - other.x;
-                    const dy = p.y - other.y;
-                    const dist = Math.hypot(dx, dy);
-                    const safeDistance = p.radius + other.radius + 400; // مسافة الأمان
+                const dx = other.x - p.x;
+                const dy = other.y - p.y;
+                const dist = Math.hypot(dx, dy);
 
+                // 🏃‍♂️ 1. الهروب من الكرات الكبيرة (التي تتفوق عليها حسانياً)
+                if (other.radius > p.radius * 1.05) {
+                    const safeDistance = p.radius + other.radius + 500;
                     if (dist < safeDistance && dist > 0) {
                         dangerFound = true;
                         const force = (safeDistance - dist) / safeDistance;
-                        fleeX += (dx / dist) * force;
-                        fleeY += (dy / dist) * force;
+                        fleeX -= (dx / dist) * force; // الاتجاه المعاكس للكرة الكبيرة
+                        fleeY -= (dy / dist) * force;
+                    }
+                } 
+                // 🎯 2. مطاردة الكرات الأصغر حسانياً فقط
+                else if (p.radius > other.radius * 1.05 && !other.isProtected) {
+                    const huntDistance = 800;
+                    if (dist < huntDistance && dist > 0) {
+                        targetFound = true;
+                        chaseX += (dx / dist);
+                        chaseY += (dy / dist);
                     }
                 }
             }
 
-            // 2. تحديث متجهات الحركة بناءً على حالة الخطر أو الحركة العشوائية السلسة
+            // تطبيق متجهات الحركة بناءً على الأولوية (الهروب أولاً ثم المطاردة)
             if (dangerFound) {
                 const len = Math.hypot(fleeX, fleeY) || 1;
-                p.vx = (p.vx * 0.7) + ((fleeX / len) * 0.3);
-                p.vy = (p.vy * 0.7) + ((fleeY / len) * 0.3);
+                p.vx = (p.vx * 0.6) + ((fleeX / len) * 0.4);
+                p.vy = (p.vy * 0.6) + ((fleeY / len) * 0.4);
+            } else if (targetFound) {
+                const len = Math.hypot(chaseX, chaseY) || 1;
+                p.vx = (p.vx * 0.7) + ((chaseX / len) * 0.3);
+                p.vy = (p.vy * 0.7) + ((chaseY / len) * 0.3);
             } else {
+                // تجوال عشوائي سلس
                 p.changeTimer--;
                 if (p.changeTimer <= 0) {
                     const randomAngle = Math.random() * Math.PI * 2;
