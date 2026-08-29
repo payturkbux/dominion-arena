@@ -13,7 +13,6 @@ app.use(express.static('public'));
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
-// كلمة سر لوحة التحكم الإدارية
 const ADMIN_SECRET = process.env.ADMIN_SECRET || "Ezkyaa.2012.2013";
 
 let supabase = null;
@@ -55,30 +54,31 @@ const STAND_LOCATIONS = {
 };
 
 const COUNTRY_DATA = {
-    "SY": { name: "سوريا", flag: "🇸🇾", image: "/flags/sy.png" },
-    "SA": { name: "السعودية", flag: "🇸🇦", image: "/flags/sa.png" },
-    "TR": { name: "تركيا", flag: "🇹🇷", image: "/flags/tr.png" },
-    "EG": { name: "مصر", flag: "🇪🇬", image: "/flags/eg.png" },
-    "AE": { name: "الإمارات", flag: "🇦🇪", image: "/flags/ae.png" },
-    "QA": { name: "قطر", flag: "🇶🇦", image: "/flags/qa.png" },
-    "KW": { name: "الكويت", flag: "🇰🇼", image: "/flags/kw.png" },
-    "IQ": { name: "العراق", flag: "🇮🇶", image: "/flags/iq.png" },
-    "JO": { name: "الأردن", flag: "🇯🇴", image: "/flags/jo.png" },
-    "LB": { name: "لبنان", flag: "🇱🇧", image: "/flags/lb.png" },
-    "OM": { name: "عُمان", flag: "🇴🇲", image: "/flags/om.png" },
-    "BH": { name: "البحرين", flag: "🇧🇭", image: "/flags/bh.png" },
-    "MA": { name: "المغرب", flag: "🇲🇦", image: "/flags/ma.png" },
-    "DZ": { name: "الجزائر", flag: "🇩🇿", image: "/flags/dz.png" },
-    "TN": { name: "تونس", flag: "🇹🇳", image: "/flags/tn.png" },
-    "LY": { name: "ليبيا", flag: "🇱🇾", image: "/flags/ly.png" },
-    "SD": { name: "السودان", flag: "🇸🇩", image: "/flags/sd.png" },
-    "YE": { name: "اليمن", flag: "🇾🇪", image: "/flags/ye.png" },
-    "PS": { name: "فلسطين", flag: "🇵🇸", image: "/flags/ps.png" },
-    "US": { name: "أمريكا", flag: "🇺🇸", image: "/flags/us.png" }
+    "SY": { name: "سوريا", flag: "🇸🇾" },
+    "SA": { name: "السعودية", flag: "🇸🇦" },
+    "TR": { name: "تركيا", flag: "🇹🇷" },
+    "EG": { name: "مصر", flag: "🇪🇬" },
+    "AE": { name: "الإمارات", flag: "🇦🇪" },
+    "QA": { name: "قطر", flag: "🇶🇦" },
+    "KW": { name: "الكويت", flag: "🇰🇼" },
+    "IQ": { name: "العراق", flag: "🇮🇶" },
+    "JO": { name: "الأردن", flag: "🇯🇴" },
+    "LB": { name: "لبنان", flag: "🇱🇧" },
+    "OM": { name: "عُمان", flag: "🇴🇲" },
+    "BH": { name: "البحرين", flag: "🇧🇭" },
+    "MA": { name: "المغرب", flag: "🇲🇦" },
+    "DZ": { name: "الجزائر", flag: "🇩🇿" },
+    "TN": { name: "تونس", flag: "🇹🇳" },
+    "LY": { name: "ليبيا", flag: "🇱🇾" },
+    "SD": { name: "السودان", flag: "🇸🇩" },
+    "YE": { name: "اليمن", flag: "🇾🇪" },
+    "PS": { name: "فلسطين", flag: "🇵🇸" },
+    "US": { name: "أمريكا", flag: "🇺🇸" }
 };
 
 let activePlayers = {}; 
 let standVault = {};     
+let userWallets = {};
 
 const BOT_NAMES = ['Ghost_Hunter', 'Shadow_King', 'Vortex_99', 'Neon_Blade', 'Zeus_BOY', 'Alpha_Wolf', 'Storm_Rider', 'Titan_X', 'Cyber_Samurai', 'Phantom_Lord', 'Odin_King', 'Valkyrie_X', 'Apex_Predator', 'Blaze_Strike', 'Omega_Prime'];
 const COUNTRIES = Object.keys(COUNTRY_DATA);
@@ -101,8 +101,7 @@ function getCountryInfo(code) {
     const data = COUNTRY_DATA[code] || COUNTRY_DATA['SY'];
     return {
         code: code || 'SY',
-        flag: data.flag,
-        flagImage: data.image
+        flag: data.flag
     };
 }
 
@@ -194,11 +193,13 @@ async function loadOfflinePlayersToStands() {
                 standVault[u.id] = {
                     id: u.id,
                     name: u.display_name || u.username || 'لاعب',
-                    points: 0, // تصفير طاقة الكرة في المدرجات
+                    points: 0,
                     tier: u.tier || 'Bronze',
                     inStand: true,
                     country: getCountryInfo(country)
                 };
+
+                userWallets[u.id] = Number(u.points_balance) || 0;
             });
         }
     } catch (err) {
@@ -206,17 +207,16 @@ async function loadOfflinePlayersToStands() {
     }
 }
 
-// دالة تحديث رصيد المحفظة المالية في Supabase فوراً
-async function updateDatabaseBalanceSafely(userId, delta) {
+async function updateDatabaseBalanceSafely(userId, newBalance) {
     if (!supabase || !userId || userId.startsWith('guest_') || userId.startsWith('bot_')) return;
 
     try {
-        const { error } = await supabase.rpc('change_user_points', {
-            user_id: userId,
-            delta: delta
-        });
+        const { error } = await supabase
+            .from('profiles')
+            .update({ points_balance: newBalance })
+            .eq('id', userId);
 
-        if (error) console.error("خطأ RPC في Supabase:", error.message);
+        if (error) console.error("خطأ تحديث المحفظة في Supabase:", error.message);
     } catch (e) {
         console.error("فشل اتصال تحديث الرصيد بقاعدة البيانات:", e);
     }
@@ -246,6 +246,13 @@ wss.on('connection', async (ws, req) => {
     if (supabase && userId && !userId.startsWith('guest_')) {
         const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
         profileData = data;
+        if (profileData && profileData.points_balance !== undefined) {
+            userWallets[socketId] = Number(profileData.points_balance) || 0;
+        }
+    }
+
+    if (userWallets[socketId] === undefined) {
+        userWallets[socketId] = 0;
     }
 
     const isGuest = socketId.startsWith('guest_');
@@ -258,7 +265,7 @@ wss.on('connection', async (ws, req) => {
         player = {
             id: socketId,
             name: profileData?.display_name || profileData?.username || (isGuest ? `زائر_${socketId.slice(-4)}` : 'لاعب'),
-            points: 0, // تنزل الكرة الميدان بـ 0 طاقة ويتم شحنها من المحفظة
+            points: 0,
             tier: profileData?.tier || 'Bronze',
             country: getCountryInfo(country),
             x: initialSpawn.x,
@@ -270,7 +277,6 @@ wss.on('connection', async (ws, req) => {
             protectedUntil: Date.now() + 5000
         };
     } else {
-        // عند دخول الكرة من جديد تُصفر طاقتها في الميدان
         player.points = 0;
         player.radius = calculateRadius(0);
 
@@ -293,7 +299,8 @@ wss.on('connection', async (ws, req) => {
         type: 'INIT', 
         selfId: socketId,
         standLocations: STAND_LOCATIONS,
-        pitchBounds: PITCH_BOUNDS
+        pitchBounds: PITCH_BOUNDS,
+        walletBalance: userWallets[socketId] || 0
     }));
 
     ws.on('message', (message) => {
@@ -303,37 +310,46 @@ wss.on('connection', async (ws, req) => {
             if (data.type === 'TRANSFER_TO_WALLET') {
                 const player = activePlayers[socketId];
                 if (player && (player.points || 0) > 0) {
-                    const amount = Math.max(1, parseInt(data.amount) || 1);
-                    const actualTransfer = Math.min(player.points, amount);
+                    const requestedAmount = Math.max(1, parseInt(data.amount) || 1);
+                    const actualTransfer = Math.min(player.points, requestedAmount);
 
-                    // 1. خصم الطاقة من الكرة
                     player.points -= actualTransfer;
                     player.radius = calculateRadius(player.points);
 
-                    // 2. زيادة رصيد المحفظة في Supabase
-                    updateDatabaseBalanceSafely(socketId, actualTransfer);
+                    userWallets[socketId] = (userWallets[socketId] || 0) + actualTransfer;
+                    updateDatabaseBalanceSafely(socketId, userWallets[socketId]);
+
+                    ws.send(JSON.stringify({
+                        type: 'WALLET_UPDATE',
+                        walletBalance: userWallets[socketId]
+                    }));
                 }
             } else if (data.type === 'CHARGE_ORB') {
                 const player = activePlayers[socketId];
-                if (player) {
-                    const amount = Math.max(1, parseInt(data.amount) || 1);
+                const amount = Math.max(1, parseInt(data.amount) || 1);
+                const currentBalance = userWallets[socketId] || 0;
 
-                    // 1. خصم القيمة من رصيد المحفظة في Supabase
-                    updateDatabaseBalanceSafely(socketId, -amount);
+                if (player && currentBalance >= amount) {
+                    userWallets[socketId] = currentBalance - amount;
+                    updateDatabaseBalanceSafely(socketId, userWallets[socketId]);
 
-                    // 2. إضافة الطاقة إلى الكرة
                     player.points = (player.points || 0) + amount;
                     player.radius = calculateRadius(player.points);
+
+                    ws.send(JSON.stringify({
+                        type: 'WALLET_UPDATE',
+                        walletBalance: userWallets[socketId]
+                    }));
                 }
             } else if (data.type === 'REENTER_ARENA') {
-                if (standVault[socketId]) {
-                    let p = standVault[socketId];
+                if (standVault[socketId] || activePlayers[socketId]) {
+                    let p = standVault[socketId] || activePlayers[socketId];
                     delete standVault[socketId];
 
-                    p.points = 0; // دخول الساحة بطاقة 0
+                    p.points = 0;
                     p.radius = calculateRadius(0);
 
-                    const spawnPos = getRandomOnPitchPosition(p.radius || 60);
+                    const spawnPos = getRandomOnPitchPosition(60);
                     
                     p.inStand = false;
                     p.x = spawnPos.x;
@@ -354,7 +370,6 @@ wss.on('connection', async (ws, req) => {
                 }
             } else if (data.type === 'ADMIN_ACTION') {
                 if (data.adminKey && data.adminKey !== ADMIN_SECRET) {
-                    console.warn(`محاولة أداء أمر إداري بمفتاح خطأ من: ${socketId}`);
                     return;
                 }
 
@@ -376,12 +391,6 @@ wss.on('connection', async (ws, req) => {
                             activePlayers[id].radius = calculateRadius(newPts);
                         }
                     });
-                } else if (data.action === 'SET_INCENTIVE_TARGET') {
-                    incentiveTarget = Math.max(1, parseInt(data.target) || 10);
-                    checkIncentivePool();
-                } else if (data.action === 'SET_INCENTIVE_POOL') {
-                    incentivePool = Math.max(0, parseInt(data.points) || 0);
-                    checkIncentivePool();
                 }
             }
         } catch (e) {
@@ -448,9 +457,6 @@ function checkCollisions() {
                 }
 
                 if (predator && victim) {
-                    if (isGuestPlayer(victim) && !predator.isBot) {
-                        continue; 
-                    }
                     executeEat(predator, victim);
                 }
             }
@@ -461,13 +467,8 @@ function checkCollisions() {
 function executeEat(predator, victim) {
     const delta = 1;
 
-    if (isGuestPlayer(predator)) {
-        incentivePool += delta; 
-        checkIncentivePool();   
-    } else {
-        predator.points = (predator.points || 0) + delta;
-        predator.radius = calculateRadius(predator.points);
-    }
+    predator.points = (predator.points || 0) + delta;
+    predator.radius = calculateRadius(predator.points);
 
     victim.points = Math.max(0, (victim.points || 0) - delta);
     victim.radius = calculateRadius(victim.points);
@@ -606,18 +607,17 @@ setInterval(() => {
 
     checkCollisions();
 
-    const payload = JSON.stringify({
-        type: 'SYNC',
-        activePlayers,
-        standLocations: STAND_LOCATIONS,
-        standTotals: getStandTotals(),
-        incentivePool: incentivePool,
-        incentiveTarget: incentiveTarget
-    });
-
     wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
-            client.send(payload);
+            client.send(JSON.stringify({
+                type: 'SYNC',
+                activePlayers,
+                standLocations: STAND_LOCATIONS,
+                standTotals: getStandTotals(),
+                walletBalance: userWallets[client.id] || 0,
+                incentivePool: incentivePool,
+                incentiveTarget: incentiveTarget
+            }));
         }
     });
 }, 1000 / 30);

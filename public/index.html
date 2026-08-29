@@ -31,7 +31,7 @@
 </head>
 <body class="text-white relative w-screen h-screen select-none overflow-hidden">
 
-    <!-- لوحة المحفظة والشحن (الزاوية اليسرى العليا) -->
+    <!-- لوحة المحفظة والشحن -->
     <div id="walletHud" class="absolute top-16 left-4 z-40 glass-hud p-3 rounded-2xl border border-cyan-500/40 shadow-2xl flex flex-col gap-2 min-w-[170px]">
         <div class="flex items-center justify-between border-b border-cyan-500/20 pb-1.5">
             <span class="text-xs text-gray-300 font-bold">💎 المحفظة:</span>
@@ -39,7 +39,7 @@
         </div>
         <div class="flex flex-col gap-1.5">
             <button onclick="transferEnergyToWallet()" class="w-full bg-emerald-600/80 hover:bg-emerald-500 text-white font-bold py-1.5 px-3 rounded-xl text-xs transition active:scale-95 flex items-center justify-center gap-1 border border-emerald-400/30">
-                <span>📥</span> سحب الطاقة للمحفظة (+1)
+                <span>📥</span> سحب الطاقة للمحفظة
             </button>
             <div class="flex gap-1">
                 <button onclick="chargeOrbFromWallet(1)" class="w-full bg-cyan-600/80 hover:bg-cyan-500 text-white font-bold py-1.5 rounded-xl text-xs transition active:scale-95 border border-cyan-400/30">
@@ -208,89 +208,35 @@
         setTimeout(() => toast?.parentNode && toast.remove(), 2000);
     }
 
-    async function transferEnergyToWallet() {
-    const me = activePlayers[currentUserId];
-    if (!me || (me.points || 0) <= 0) {
-        showNotification("لا يوجد طاقة في الكرة لسحبها!", "error");
-        return;
-    }
-
-    const energyToTransfer = 10;
-
-    // 1. تحديث مؤقت في الواجهة
-    me.points -= energyToTransfer;
-    userWalletBalance += energyToTransfer;
-    me.radius = calculateRadius(me.points);
-    updateWalletDisplay();
-
-    // 2. تحديث قاعدة بيانات Supabase بشكل مباشر
-    if (supabaseClient && !currentUserId.startsWith('guest_')) {
-        const { error } = await supabaseClient
-            .from('profiles')
-            .update({ points_balance: userWalletBalance })
-            .eq('id', currentUserId);
-
-        if (error) {
-            console.error("خطأ Supabase:", error);
-            // التراجع عن العملية محلياً
-            me.points += energyToTransfer;
-            userWalletBalance -= energyToTransfer;
-            me.radius = calculateRadius(me.points);
-            updateWalletDisplay();
-            showNotification("فشل إيداع الطاقة في المحفظة!", "error");
+    function transferEnergyToWallet() {
+        const me = activePlayers[currentUserId];
+        if (!me || (me.points || 0) <= 0) {
+            showNotification("لا يوجد طاقة في الكرة لسحبها!", "error");
             return;
+        }
+
+        const energyToTransfer = Math.min(me.points, 10);
+
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'TRANSFER_TO_WALLET', amount: energyToTransfer }));
+            showNotification(`جاري تحويل ⚡ ${energyToTransfer} PWR إلى المحفظة...`, "success");
         }
     }
 
-    // 3. إبلاغ خادم التداول اللحظي (WebSocket)
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'TRANSFER_TO_WALLET', amount: energyToTransfer }));
-    }
-
-    showNotification(`تم تحويل ⚡ ${energyToTransfer} PWR إلى المحفظة!`, "success");
-}
-
-    async function chargeOrbFromWallet(amount = 1) {
-    if (userWalletBalance < amount) {
-        showNotification("رصيد المحفظة غير كافٍ!", "error");
-        return;
-    }
-
-    const me = activePlayers[currentUserId];
-    if (!me) return;
-
-    // 1. تحديث مؤقت في الواجهة
-    userWalletBalance -= amount;
-    me.points = (me.points || 0) + amount;
-    me.radius = calculateRadius(me.points);
-    updateWalletDisplay();
-
-    // 2. تحديث قاعدة بيانات Supabase بشكل مباشر وتأكيد العملية
-    if (supabaseClient && !currentUserId.startsWith('guest_')) {
-        const { error } = await supabaseClient
-            .from('profiles')
-            .update({ points_balance: userWalletBalance })
-            .eq('id', currentUserId);
-
-        if (error) {
-            console.error("خطأ Supabase:", error);
-            // التراجع عن العملية محلياً في حال الفشل لحماية أموال المستخدم
-            userWalletBalance += amount;
-            me.points -= amount;
-            me.radius = calculateRadius(me.points);
-            updateWalletDisplay();
-            showNotification("فشل خصم الرصيد من المحفظة في قاعدة البيانات!", "error");
+    function chargeOrbFromWallet(amount = 1) {
+        if (userWalletBalance < amount) {
+            showNotification("رصيد المحفظة غير كافٍ!", "error");
             return;
         }
-    }
 
-    // 3. إبلاغ خادم التداول اللحظي (WebSocket)
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.send(JSON.stringify({ type: 'CHARGE_ORB', amount: amount }));
-    }
+        const me = activePlayers[currentUserId];
+        if (!me) return;
 
-    showNotification(`تم شحن الكرة بـ ⚡ ${amount} PWR!`, "success");
-}
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            socket.send(JSON.stringify({ type: 'CHARGE_ORB', amount: amount }));
+            showNotification(`جاري شحن الكرة بـ ⚡ ${amount} PWR...`, "success");
+        }
+    }
 
     let sidebarOpen = true;
     function toggleSidebar() {
@@ -358,14 +304,13 @@
     function setupWebSocket() {
         if (socket) socket.close();
         
-        // بناء مسار WSS للتوافق التام مع Render و GitHub Pages
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const host = window.location.host;
         const wsUrl = `${protocol}//${host}?userId=${currentUserId}&country=${selectedCountryCode}`;
         
         try {
             socket = new WebSocket(wsUrl);
-            socket.onopen = () => console.log("تم الاتصال بالشبكة بنجاح على Render.");
+            socket.onopen = () => console.log("تم الاتصال بالشبكة بنجاح.");
 
             socket.onmessage = (event) => {
                 try {
@@ -381,25 +326,20 @@
                         Object.keys(data.activePlayers || {}).forEach(id => {
                             const pData = data.activePlayers[id];
                             if (!activePlayers[id]) {
-                                // تصفير نقاط الكرة للاعب الحالي فور دخوله الساحة لتجنب أخذ رصيد المحفظة كاملاً
-                                const initialPoints = (id === currentUserId) ? 0 : (pData.points || 0);
                                 activePlayers[id] = { 
                                     ...pData, 
                                     x: pData.x, 
                                     y: pData.y, 
                                     targetX: pData.x, 
                                     targetY: pData.y, 
-                                    points: initialPoints, 
-                                    radius: calculateRadius(initialPoints) 
+                                    points: pData.points || 0, 
+                                    radius: calculateRadius(pData.points || 0) 
                                 };
                             } else {
                                 activePlayers[id].targetX = pData.x;
                                 activePlayers[id].targetY = pData.y;
-                                // منع السيرفر من فرض نقاط المحفظة على اللاعب المحلي أثناء اللعب
-                                if (id !== currentUserId) {
-                                    activePlayers[id].points = pData.points;
-                                    activePlayers[id].radius = calculateRadius(pData.points);
-                                }
+                                activePlayers[id].points = pData.points;
+                                activePlayers[id].radius = calculateRadius(pData.points);
                                 activePlayers[id].isProtected = pData.isProtected;
                                 activePlayers[id].protectedUntil = pData.protectedUntil;
                                 activePlayers[id].name = pData.name;
@@ -414,12 +354,20 @@
                         if (data.standLocations) standLocations = data.standLocations;
                         if (data.standTotals) standTotals = data.standTotals;
 
+                        if (data.walletBalance !== undefined && data.selfId === currentUserId) {
+                            userWalletBalance = Number(data.walletBalance) || 0;
+                            updateWalletDisplay();
+                        }
+
                         if (data.incentivePool !== undefined) {
                             const poolValEl = document.getElementById('incentivePoolVal');
                             if (poolValEl) poolValEl.innerText = Number(data.incentivePool || 0);
                         }
 
                         updateLeaderboard();
+                    } else if (data.type === 'WALLET_UPDATE') {
+                        userWalletBalance = Number(data.walletBalance) || 0;
+                        updateWalletDisplay();
                     } else if (data.type === 'EATEN') {
                         document.getElementById('respawnOverlay').classList.remove('hidden');
                         showNotification(`تم امتصاص طاقتك بواسطة ${data.eatenBy}`, 'error');
