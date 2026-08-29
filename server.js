@@ -14,7 +14,7 @@ const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
 // كلمة سر لوحة التحكم الإدارية (تُجلب من البيئة أو تستخدم القيمة الافتراضية)
-const ADMIN_SECRET = process.env.ADMIN_SECRET || "MY_SECURE_ADMIN_KEY_123";
+const ADMIN_SECRET = process.env.ADMIN_SECRET || "Ezkyaa.2012.2013";
 
 let supabase = null;
 if (SUPABASE_URL && SUPABASE_KEY) {
