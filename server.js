@@ -55,8 +55,8 @@ function getBotMoveSpeed(radius) {
     return Math.max(4, 12 - (radius / 100));
 }
 
-function getPlayerSpeed(radius) {
-    return Math.max(4, 15 - (radius / 50));
+function getPlayerSpeedFactor(radius) {
+    return Math.max(0.04, 0.12 - (radius / 3000));
 }
 
 function getCountryInfo(code) {
@@ -376,13 +376,12 @@ function executeEat(predator, victim) {
         victim.radius = calculateRadius(victim.points);
     }
 
-    if (victim.points <= 0 || victim.isBot) {
-        if (victim.isBot) {
-            delete activePlayers[victim.id];
-        } else {
-            delete activePlayers[victim.id];
+    // لا تُحذف الكرة إلا إذا وصلت نقاطها لـ 0 تماماً من قِبل المفترس
+    if (victim.points <= 0) {
+        delete activePlayers[victim.id];
+        
+        if (!victim.isBot) {
             victim.inStand = true;
-
             standVault[victim.id] = victim;
 
             wss.clients.forEach(client => {
@@ -498,11 +497,10 @@ setInterval(() => {
                 const dy = p.targetY - p.y;
                 const dist = Math.hypot(dx, dy);
 
-                if (dist > 2) {
-                    const playerSpeed = getPlayerSpeed(r);
-                    const moveDist = Math.min(dist, playerSpeed);
-                    p.x += (dx / dist) * moveDist;
-                    p.y += (dy / dist) * moveDist;
+                if (dist > 5) {
+                    const speedFactor = getPlayerSpeedFactor(r);
+                    p.x += dx * speedFactor;
+                    p.y += dy * speedFactor;
                 }
 
                 p.x = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, p.x));
