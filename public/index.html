@@ -192,10 +192,9 @@
     window.addEventListener('resize', resize);
     resize();
 
-    // 🏟️ أبعاد الساحة المضاعفة رسميًا (عريضة جداً)
+    // 🏟️ أبعاد الساحة المضاعفة رسميًا
     const PITCH_BOUNDS = { minX: 0, maxX: 14000, minY: 0, maxY: 8000 };
 
-    // نقطة المنتصف
     const centerX = (PITCH_BOUNDS.maxX + PITCH_BOUNDS.minX) / 2;
     const centerY = (PITCH_BOUNDS.maxY + PITCH_BOUNDS.minY) / 2;
 
@@ -205,8 +204,10 @@
 
     let activePlayers = {};
     let standVault = {};
+    let standLocations = {}; // تخزين إحداثيات المدرجات القادمة من السيرفر
+
     let currentUserProfile = null;
-    let selectedCountryCode = 'SY'; // القيمة الافتراضية
+    let selectedCountryCode = 'SY'; 
     let currentUserId = localStorage.getItem('dominion_user_id') || `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
 
     function calculateRadius(points) {
@@ -251,9 +252,11 @@
                 const data = JSON.parse(event.data);
                 if (data.type === 'INIT') {
                     currentUserId = data.selfId;
+                    if (data.standLocations) standLocations = data.standLocations;
                 } else if (data.type === 'SYNC') {
                     activePlayers = data.activePlayers || {};
                     standVault = data.standVault || {};
+                    if (data.standLocations) standLocations = data.standLocations;
                     updateLeaderboard();
                 } else if (data.type === 'EATEN') {
                     const overlay = document.getElementById('respawnOverlay');
@@ -469,15 +472,65 @@
         }).join('');
     }
 
+    // 🏟️ دالة رسم المدرجات المحيطة بالساحة
+    function drawStands() {
+        if (!standLocations) return;
+
+        Object.keys(standLocations).forEach(code => {
+            const stand = standLocations[code];
+            const w = stand.width || 2500;
+            const h = stand.height || 400;
+            const x = stand.x - w / 2;
+            const y = stand.y - h / 2;
+
+            const landmark = countryLandmarks[code];
+            const img = monumentImages[code];
+            const themeColor = landmark?.color || "#00f5ff";
+
+            ctx.save();
+
+            // 1️⃣ رسم خلفية المدرج بالصورة المحددة للدولة
+            if (img && img.complete && img.naturalWidth !== 0) {
+                ctx.globalAlpha = 0.35;
+                ctx.drawImage(img, x, y, w, h);
+                ctx.globalAlpha = 1.0;
+            } else {
+                ctx.fillStyle = "rgba(15, 23, 42, 0.8)";
+                ctx.fillRect(x, y, w, h);
+            }
+
+            // 2️⃣ إطار مضيء ومحدد بحواف واضحة
+            ctx.strokeStyle = themeColor;
+            ctx.lineWidth = 12;
+            ctx.shadowBlur = 25;
+            ctx.shadowColor = themeColor;
+            ctx.strokeRect(x, y, w, h);
+            ctx.shadowBlur = 0;
+
+            // 3️⃣ طبقة تعتم دافئة لتباين الكرات داخل المدرج
+            ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+            ctx.fillRect(x, y, w, h);
+
+            // 4️⃣ كتابة عنوان واسم المدرج بوضوح
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 90px 'Tajawal'";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(`${landmark?.flag || ''} مدرج ${landmark?.name || code}`, stand.x, stand.y);
+
+            ctx.restore();
+        });
+    }
+
     function drawStadiumPitch() {
         ctx.fillStyle = "#0c1220";
-        ctx.fillRect(-4000, -4000, 22000, 16000);
+        ctx.fillRect(-6000, -6000, 26000, 20000);
 
         let lightGrad = ctx.createRadialGradient(centerX, centerY, 1000, centerX, centerY, 12000);
         lightGrad.addColorStop(0, "rgba(0, 245, 255, 0.12)");
         lightGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
         ctx.fillStyle = lightGrad;
-        ctx.fillRect(-4000, -4000, 22000, 16000);
+        ctx.fillRect(-6000, -6000, 26000, 20000);
 
         let pitchWidth = PITCH_BOUNDS.maxX - PITCH_BOUNDS.minX;
         let pitchHeight = PITCH_BOUNDS.maxY - PITCH_BOUNDS.minY;
@@ -571,8 +624,13 @@
         ctx.scale(camera.zoom, camera.zoom);
         ctx.translate(-camera.x, -camera.y);
 
+        // 1. رسم ارضية الساحة
         drawStadiumPitch();
 
+        // 2. رسم المدرجات خلف الكرات
+        drawStands();
+
+        // 3. رسم الكرات داخل وخارج الساحة
         Object.values(standVault).forEach(p => drawOrb(p));
         Object.values(activePlayers).forEach(p => drawOrb(p));
 
