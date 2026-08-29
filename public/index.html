@@ -187,7 +187,6 @@
         }).join('');
     }
 
-    // 🔥 منع الرصيد الوهمي: البدء بصفر وحظر الافتراضيات الخاطئة
     let userWalletBalance = 0; 
 
     function updateWalletDisplay() {
@@ -228,7 +227,6 @@
             socket.send(JSON.stringify({ type: 'TRANSFER_TO_WALLET', amount: energyToTransfer }));
         }
 
-        // 🔥 ربط صريح مع points_balance لتعديل رصيد القاعدة فورياً عند السحب
         if (supabaseClient && !currentUserId.startsWith('guest_')) {
             await supabaseClient.rpc('change_user_points', { user_id: currentUserId, delta: energyToTransfer });
         }
@@ -256,7 +254,6 @@
             socket.send(JSON.stringify({ type: 'CHARGE_ORB', amount: chargeAmount }));
         }
 
-        // 🔥 خصم الرصيد من جدول public.profiles فورياً
         if (supabaseClient && !currentUserId.startsWith('guest_')) {
             await supabaseClient.rpc('change_user_points', { user_id: currentUserId, delta: -chargeAmount });
         }
@@ -340,7 +337,6 @@
                     if (data.type === 'INIT') {
                         currentUserId = data.selfId;
                         if (data.standLocations) standLocations = data.standLocations;
-                        // 🔥 الربط الحقيقي ورسم الرصيد الفعلي فورياً من السيرفر
                         if (data.walletBalance !== undefined) {
                             userWalletBalance = Number(data.walletBalance) || 0;
                             updateWalletDisplay();
@@ -420,7 +416,6 @@
         updateWalletDisplay();
     }
 
-    // 🔥 جلب البيانات الفعلية وقراءة points_balance دون سواها
     async function fetchUserProfile(uid) {
         if (!supabaseClient || !uid || uid.startsWith('guest_')) return;
         try {
@@ -432,7 +427,6 @@
 
             if (!error && data) { 
                 currentUserProfile = data; 
-                // ربط صريح ودقيق للحقل المطلوب points_balance
                 if (data.points_balance !== undefined && data.points_balance !== null) {
                     userWalletBalance = Number(data.points_balance);
                 } else {
@@ -475,7 +469,7 @@
         localStorage.removeItem('dominion_user_id');
         currentUserId = `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
         currentUserProfile = null;
-        userWalletBalance = 0; // 🔥 صفر تلقائياً عند تسجيل الخروج
+        userWalletBalance = 0; 
         updateAuthUI();
         setupWebSocket();
     }
@@ -748,7 +742,10 @@
         requestAnimationFrame(render);
     }
 
-    if (!currentUserId.startsWith('guest_')) fetchUserProfile(currentUserId);
+    // تهيئة واستدعاء بيانات الحساب فوراً للعملاء المسجلين عند تحميل الصفحة
+    if (!currentUserId.startsWith('guest_')) {
+        fetchUserProfile(currentUserId);
+    }
     updateAuthUI();
     render();
 </script>
