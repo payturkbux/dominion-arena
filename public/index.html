@@ -2,7 +2,8 @@
 <html class="dark" lang="ar" dir="rtl">
 <head>
     <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"/>
+    <!-- 📱 السماح بالزوم والتكبير بمرونة على شاشات الهواتف -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=0.1, maximum-scale=5.0, user-scalable=yes, viewport-fit=cover"/>
     <title>Dominion Arena Stadium</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -14,7 +15,6 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
-            touch-action: none;
             -webkit-user-select: none;
             user-select: none;
             font-family: 'Tajawal', sans-serif;
@@ -27,12 +27,24 @@
             border: 1px solid rgba(255, 255, 255, 0.12);
         }
         @keyframes slideIn {
-            from { transform: translateY(-100%) translateX(-50%); opacity: 0; }
-            to { transform: translateY(0) translateX(-50%); opacity: 1; }
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
         }
-        .toast-animate { animation: slideIn 0.3s ease-out forwards; }
+        .toast-animate { animation: slideIn 0.25s ease-out forwards; }
         .sidebar-transition {
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
+        }
+        /* 📜 تخصيص شريط التمرير لصندوق الرسائل الموحد */
+        #toastContainer::-webkit-scrollbar {
+            width: 4px;
+        }
+        #toastContainer::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 4px;
+        }
+        #toastContainer::-webkit-scrollbar-thumb {
+            background: rgba(0, 245, 255, 0.4);
+            border-radius: 4px;
         }
     </style>
 </head>
@@ -59,7 +71,8 @@
         </div>
     </div>
 
-    <div id="toastContainer" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
+    <!-- 📩 صندوق الرسائل والتنبيهات الموحد (محدد الحجم وبشريط تمرير داخلي لا يغلق الشاشة) -->
+    <div id="toastContainer" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 w-11/12 max-w-sm max-h-48 sm:max-h-64 overflow-y-auto pointer-events-auto p-1 scroll-smooth"></div>
 
     <div id="respawnOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
         <div class="glass-hud p-8 rounded-3xl w-full max-w-md border border-red-500/50 text-center shadow-2xl space-y-5">
@@ -147,20 +160,25 @@
         console.error("Supabase Init Error:", e);
     }
 
+    // 📩 دالة التنبيهات المعدلة: تدرج الرسائل متتالية داخل صندوق ثابت
     function showNotification(message, type = 'error') {
         const container = document.getElementById('toastContainer');
+        if (!container) return;
+
         const toast = document.createElement('div');
         const bgColor = type === 'error' ? 'bg-red-900/90 border-red-500/50 text-red-200' : 'bg-emerald-900/90 border-emerald-500/50 text-emerald-200';
         const icon = type === 'error' ? '⚠️' : '✅';
 
-        toast.className = `toast-animate glass-hud px-4 py-2.5 rounded-xl border text-xs font-bold shadow-2xl flex items-center gap-2 ${bgColor} pointer-events-auto`;
-        toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+        toast.className = `toast-animate glass-hud px-3.5 py-2 rounded-xl border text-xs font-bold shadow-xl flex items-center gap-2 ${bgColor} shrink-0`;
+        toast.innerHTML = `<span>${icon}</span> <span class="leading-snug">${message}</span>`;
         
         container.appendChild(toast);
+        container.scrollTop = container.scrollHeight; // التمرير التلقائي لأحدث رسالة
+
         setTimeout(() => {
             toast.style.opacity = '0';
-            toast.style.transition = 'opacity 0.5s ease';
-            setTimeout(() => toast.remove(), 500);
+            toast.style.transition = 'opacity 0.4s ease';
+            setTimeout(() => toast.remove(), 400);
         }, 4000);
     }
 
@@ -198,8 +216,8 @@
     const centerY = (PITCH_BOUNDS.maxY + PITCH_BOUNDS.minY) / 2;
 
     let camera = { x: centerX, y: centerY, zoom: 0.15, targetZoom: 0.15 };
-    const MIN_ZOOM = 0.08;
-    const MAX_ZOOM = 1.20;
+    const MIN_ZOOM = 0.05;
+    const MAX_ZOOM = 2.50;
 
     let activePlayers = {};
     let standVault = {};
@@ -328,9 +346,8 @@
 
                         standVault = data.standVault || {};
                         if (data.standLocations) standLocations = data.standLocations;
-                        if (data.standTotals) standTotals = data.standTotals; // 📥 استلام أرصدة المدرجات
+                        if (data.standTotals) standTotals = data.standTotals;
 
-                        // تحديث عرض صندوق التحفيز إن وجد
                         if (data.incentivePool !== undefined) {
                             const tipEl = document.getElementById('hudActionTip');
                             if (tipEl) {
@@ -370,15 +387,12 @@
         const stolenPoints = Number(eaten.points || 0);
 
         if (isGuestPlayer(eater)) {
-            // 🚩 الحامل هو "الزائر":
-            // 1. تضاف النقاط كاملة أو جزئية لصندوق التحفيز ويتم اقتطاع 50% منها لتشجيع المستخدمين الضعفاء
             const incentiveBonus = Math.floor(stolenPoints * 0.5);
-            eater.points += stolenPoints; // تمكين كرة الزائر من النمو بلا حدود
+            eater.points += stolenPoints;
             eater.radius = calculateRadius(eater.points);
 
             showNotification(`الزائر ابتلع ${eaten.name}! تمت إضافة ${stolenPoints}$ وتمرير 50% (${incentiveBonus}$) لصندوق تحفيز الضعفاء!`, "success");
 
-            // توزيع الـ 50% فوراً على أضعف 3 مستخدمين حقيقيين
             let realUsers = Object.values(activePlayers).filter(p => !isGuestPlayer(p) && p.id !== eaten.id);
             realUsers.sort((a, b) => a.points - b.points);
 
@@ -390,15 +404,12 @@
                 }
             }
         } else {
-            // ⚔️ الحامل هو "مستخدم حقيقي" يبتلع صديقه/مستخدم آخر:
-            // تنتقل النقطة بالكامل من صديقه له فقط دون دخول صندوق التحفيز
             eater.points += stolenPoints;
             eater.radius = calculateRadius(eater.points);
 
             showNotification(`المستخدم ${eater.name} ابتلع صديقه ${eaten.name}! انتقلت +${stolenPoints}$ له مباشرة!`, "error");
         }
 
-        // إعادة ضبط المهزوم
         if (eaten.id === currentUserId) {
             document.getElementById('respawnOverlay').classList.remove('hidden');
         } else {
@@ -445,7 +456,6 @@
                 const r2 = p2.radius || calculateRadius(p2.points);
 
                 if (dist < Math.max(r1, r2)) {
-                    // 🌟 الزائر يستطيع ابتلاع أي كرة مهما كان حجمها
                     if (isGuestPlayer(p1) && !isGuestPlayer(p2)) {
                         processEatenLogic(p1, p2);
                     } else if (isGuestPlayer(p2) && !isGuestPlayer(p1)) {
@@ -524,11 +534,38 @@
         setupWebSocket();
     }
 
+    // 🔍 تحكم بالزوم عن طريق عجلة الماوس
     window.addEventListener('wheel', (e) => {
+        if (e.target.closest('#toastContainer, #leaderboardSidebar, #loginModal, #countrySelectModal, #respawnOverlay')) return;
         e.preventDefault();
         const zoomFactor = e.deltaY < 0 ? 1.1 : 0.9;
         camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.targetZoom * zoomFactor));
     }, { passive: false });
+
+    // 📱 دعم التكبير والتصغير (Pinch-to-Zoom) على شاشة اللمس
+    let touchStartDist = 0;
+    window.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            touchStartDist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+        }
+    }, { passive: true });
+
+    window.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2) {
+            const currentDist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            if (touchStartDist > 0) {
+                const scale = currentDist / touchStartDist;
+                camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.targetZoom * (scale > 1 ? 1.03 : 0.97)));
+                touchStartDist = currentDist;
+            }
+        }
+    }, { passive: true });
 
     function getWorldCoordinates(clientX, clientY) {
         const worldX = (clientX - screenWidth / 2) / camera.zoom + camera.x;
@@ -633,7 +670,6 @@
             ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
             ctx.fillRect(x, y, w, h);
 
-            // 🏛️ عرض اسم المدرج وتواجد المجموع المالي للدولة وتحفيزاتها
             ctx.fillStyle = "#ffffff";
             ctx.font = "bold 80px 'Tajawal'";
             ctx.textAlign = "center";
