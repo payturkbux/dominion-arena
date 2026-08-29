@@ -97,6 +97,27 @@ function getRandomOnPitchPosition(radius) {
     };
 }
 
+// 📊 دالة حساب مجموع أرصدة اللاعبين والمدرجات التابعة لكل دولة
+function getStandTotals() {
+    const totals = { "SY": 0, "SA": 0, "TR": 0, "EG": 0, "AE": 0 };
+    
+    Object.values(activePlayers).forEach(p => {
+        const code = p.country?.code || 'SY';
+        if (totals[code] !== undefined) {
+            totals[code] += (p.points || 0);
+        }
+    });
+
+    Object.values(standVault).forEach(p => {
+        const code = p.country?.code || 'SY';
+        if (totals[code] !== undefined) {
+            totals[code] += (p.points || 0);
+        }
+    });
+
+    return totals;
+}
+
 function spawnBot(botId) {
     const randomName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
     const randomCountry = COUNTRIES[Math.floor(Math.random() * COUNTRIES.length)];
@@ -345,7 +366,8 @@ function executeEat(predator, victim) {
         predator.points += 2;
         predator.radius = calculateRadius(predator.points);
     } else if (isGuestPlayer(predator)) {
-        predator.points += 1;
+        // 🚀 نمو كرة الزائر وزيادة نصف قطرها عند الابتلاع
+        predator.points = (predator.points || 0) + 1;
         predator.radius = calculateRadius(predator.points);
 
         incentivePool += 1;
@@ -471,6 +493,7 @@ setInterval(() => {
         activePlayers,
         standVault,
         standLocations: STAND_LOCATIONS,
+        standTotals: getStandTotals(), // 📊 إرسال مجاميع أرصدة المدرجات
         incentivePool: incentivePool
     });
 
