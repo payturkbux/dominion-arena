@@ -211,10 +211,11 @@
     let selectedCountryCode = 'SY'; 
     let currentUserId = localStorage.getItem('dominion_user_id') || `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
 
+    // 🎯 معادلة السيرفر الموحدة لحساب نصف القطر
     function calculateRadius(points) {
         const val = Math.max(0, Number(points) || 0);
-        const calculatedRadius = 30 + Math.pow(val / 10, 0.55);
-        return Math.min(1200, Math.max(30, calculatedRadius)); // رفع الحد الأعلى لتمكين الزائر من النمو
+        const calculatedRadius = 60 + (Math.pow(val, 0.55) * 16);
+        return Math.min(1200, Math.max(60, Math.round(calculatedRadius)));
     }
 
     const monumentImages = {};
@@ -248,8 +249,8 @@
                 y: centerY,
                 targetX: centerX,
                 targetY: centerY,
-                points: 200,
-                radius: calculateRadius(200),
+                points: 10,
+                radius: calculateRadius(10),
                 country: { code: selectedCountryCode, flag: countryLandmarks[selectedCountryCode].flag }
             };
         }
@@ -329,6 +330,14 @@
                         if (data.standLocations) standLocations = data.standLocations;
                         if (data.standTotals) standTotals = data.standTotals; // 📥 استلام أرصدة المدرجات
 
+                        // تحديث عرض صندوق التحفيز إن وجد
+                        if (data.incentivePool !== undefined) {
+                            const tipEl = document.getElementById('hudActionTip');
+                            if (tipEl) {
+                                tipEl.innerText = `رصيد صندوق التحفيز: ${Number(data.incentivePool || 0).toLocaleString()} $`;
+                            }
+                        }
+
                         updateLeaderboard();
                     } else if (data.type === 'EATEN') {
                         document.getElementById('respawnOverlay').classList.remove('hidden');
@@ -348,8 +357,8 @@
             socket.send(JSON.stringify({ type: 'REENTER_ARENA' }));
         }
         if (activePlayers[currentUserId]) {
-            activePlayers[currentUserId].points = 100;
-            activePlayers[currentUserId].radius = calculateRadius(100);
+            activePlayers[currentUserId].points = 10;
+            activePlayers[currentUserId].radius = calculateRadius(10);
             activePlayers[currentUserId].x = centerX;
             activePlayers[currentUserId].y = centerY;
         }
@@ -393,8 +402,8 @@
         if (eaten.id === currentUserId) {
             document.getElementById('respawnOverlay').classList.remove('hidden');
         } else {
-            eaten.points = 50;
-            eaten.radius = calculateRadius(50);
+            eaten.points = 10;
+            eaten.radius = calculateRadius(10);
             eaten.x = Math.random() * (PITCH_BOUNDS.maxX - 1000) + 500;
             eaten.y = Math.random() * (PITCH_BOUNDS.maxY - 1000) + 500;
         }
@@ -420,7 +429,7 @@
             p.x += (p.targetX - p.x) * lerpFactor;
             p.y += (p.targetY - p.y) * lerpFactor;
 
-            const r = p.radius || 30;
+            const r = p.radius || 60;
             p.x = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, p.x));
             p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, p.y));
         });
