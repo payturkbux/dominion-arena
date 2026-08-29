@@ -34,16 +34,15 @@
     <!-- نافذة اختيار الدولة -->
     <div id="countrySelectModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
         <div class="glass-hud p-6 sm:p-8 rounded-3xl w-full max-w-md border border-cyan-500/50 text-center shadow-2xl space-y-5">
-            <div class="text-5xl">🚩</div>
-            <h2 class="text-2xl font-black text-cyan-400">اختر دولتك للبدء</h2>
-            <p class="text-xs text-gray-300 leading-relaxed">اختر علم الدولة التي تريد تمثيلها والمنافسة باسمها في الساحة الكبرى:</p>
+            <div class="text-5xl">⚡</div>
+            <h2 class="text-2xl font-black text-cyan-400">اختر مستودعك الوطني</h2>
+            <p class="text-xs text-gray-300 leading-relaxed">اختر علم الدولة التي تريد تمثيلها وشحن مستودع طاقتها في الساحة:</p>
 
             <select id="countrySelectDropdown" class="w-full px-4 py-3.5 bg-gray-900 border border-cyan-500/40 rounded-2xl text-white text-sm font-bold focus:outline-none focus:border-cyan-400 transition cursor-pointer">
-                <!-- يُملأ ديناميكياً بأحدث الأعلام والرموز -->
             </select>
 
             <button onclick="confirmCountryAndStart()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold py-3.5 rounded-2xl text-sm shadow-xl active:scale-95 transition">
-                🚀 دخول الساحة الآن
+                🚀 بدء الشحن ودخول الساحة
             </button>
         </div>
     </div>
@@ -54,7 +53,7 @@
             <div class="flex justify-between items-center border-b border-amber-500/30 pb-4">
                 <div class="flex items-center gap-2">
                     <span class="text-2xl">⚙️</span>
-                    <h2 class="text-xl font-black text-amber-400">لوحة التحكم الإدارية بالساحة</h2>
+                    <h2 class="text-xl font-black text-amber-400">لوحة التحكم بإشعاع ومستودعات الطاقة</h2>
                 </div>
                 <button onclick="toggleAdminDashboard()" class="text-gray-400 hover:text-white font-bold text-lg">✕</button>
             </div>
@@ -70,11 +69,11 @@
                     <div id="admBotCount" class="text-xl font-black text-emerald-400 font-mono">0</div>
                 </div>
                 <div class="bg-white/5 p-3 rounded-2xl border border-white/10">
-                    <div class="text-xs text-gray-400 font-bold">نقاط الزوار الحالية</div>
-                    <div id="admGuestPoints" class="text-xl font-black text-amber-400 font-mono">0</div>
+                    <div class="text-xs text-gray-400 font-bold">طاقة الزوار الحالية</div>
+                    <div id="admGuestPoints" class="text-xl font-black text-amber-400 font-mono">0 PWR</div>
                 </div>
                 <div class="bg-white/5 p-3 rounded-2xl border border-white/10">
-                    <div class="text-xs text-gray-400 font-bold">المدرجات النشطة</div>
+                    <div class="text-xs text-gray-400 font-bold">المستودعات النشطة</div>
                     <div id="admStandsCount" class="text-xl font-black text-purple-400 font-mono">20</div>
                 </div>
             </div>
@@ -85,14 +84,13 @@
                     <thead class="bg-amber-500/20 text-amber-300 font-bold">
                         <tr>
                             <th class="p-3">العلم / الرمز</th>
-                            <th class="p-3">اسم الدولة</th>
-                            <th class="p-3">كود الدولة</th>
-                            <th class="p-3">نقاط المدرج الكلية</th>
+                            <th class="p-3">اسم المستودع (الدولة)</th>
+                            <th class="p-3">الكود</th>
+                            <th class="p-3">إجمالي الطاقة المخزنة</th>
                             <th class="p-3">اللاعبين بالساحة</th>
                         </tr>
                     </thead>
                     <tbody id="admCountriesTable" class="divide-y divide-white/5">
-                        <!-- تُملأ البيانات ديناميكياً -->
                     </tbody>
                 </table>
             </div>
@@ -114,24 +112,24 @@
     <div id="respawnOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
         <div class="glass-hud p-8 rounded-3xl w-full max-w-md border border-red-500/50 text-center shadow-2xl space-y-5">
             <div class="text-6xl">💥</div>
-            <h2 class="text-2xl font-black text-red-400">تم ابتلاع كرتك!</h2>
-            <p id="respawnText" class="text-sm text-gray-300 leading-relaxed">لقد خسرت نقاطك وتم إرجاعك للميدان.</p>
+            <h2 class="text-2xl font-black text-red-400">استنفذت طاقتك بالكامل!</h2>
+            <p id="respawnText" class="text-sm text-gray-300 leading-relaxed">تم امتصاص باوار كرتك بالكامل وإعادتك للنقطة المرجعية.</p>
             <button onclick="requestReentry()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold py-3.5 rounded-2xl text-sm shadow-xl active:scale-95 transition">
-                ⚡ إعادة النزول للميدان الآن
+                ⚡ شحن جديد والنزول للميدان
             </button>
         </div>
     </div>
 
     <!-- Header UI -->
     <header class="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 glass-hud px-4 py-2 rounded-2xl shadow-2xl border border-cyan-500/30 max-w-[90vw]">
-        <span class="text-xl">🏆</span>
+        <span class="text-xl">⚡</span>
         <div class="truncate">
-            <div id="hudStatusTitle" class="text-[9px] sm:text-[10px] uppercase text-cyan-400 font-bold tracking-widest truncate">الساحة الكبرى - نظام المدرجات الـ20</div>
-            <div id="hudActionTip" class="text-[11px] font-bold text-emerald-400 truncate">خزان التحفيز: <span id="incentivePoolVal" class="text-amber-400 font-mono">0</span> / 10</div>
+            <div id="hudStatusTitle" class="text-[9px] sm:text-[10px] uppercase text-cyan-400 font-bold tracking-widest truncate">شبكة مستودعات الطاقة الوطنية</div>
+            <div id="hudActionTip" class="text-[11px] font-bold text-emerald-400 truncate">مخزون التحفيز: <span id="incentivePoolVal" class="text-amber-400 font-mono">0</span> / 10</div>
         </div>
     </header>
 
-    <!-- الأزرار العلوية (تسجيل، لوحة التحكم) -->
+    <!-- الأزرار العلوية -->
     <div class="absolute top-4 left-4 z-30 flex gap-2">
         <button id="authBtn" onclick="openLoginModal()" class="glass-hud px-3 py-2 rounded-xl flex items-center gap-1.5 border border-cyan-500/40 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition shadow-2xl">
             <span id="authBtnIcon">🔑</span>
@@ -154,8 +152,8 @@
 
     <div id="loginModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
         <div class="glass-hud p-6 rounded-3xl w-full max-w-sm border border-cyan-500/40 text-center shadow-2xl space-y-4">
-            <div class="text-4xl">⚽</div>
-            <h3 class="text-lg font-bold text-cyan-400">تسجيل الدخول إلى الميدان</h3>
+            <div class="text-4xl">⚡</div>
+            <h3 class="text-lg font-bold text-cyan-400">تسجيل الدخول إلى الشبكة</h3>
             <p class="text-xs text-gray-300 leading-relaxed">أدخل بريدك الإلكتروني وكلمة السر المعتمدة:</p>
             
             <div class="space-y-3">
@@ -179,7 +177,7 @@
         <div class="flex items-center justify-between mb-3 pb-2 border-b border-white/10">
             <div class="flex items-center gap-2">
                 <span class="text-xl">🏆</span>
-                <h3 class="font-bold text-sm text-amber-400">المتصدرون (Top 5)</h3>
+                <h3 class="font-bold text-sm text-amber-400">أعلى باوار (Top 5)</h3>
             </div>
             <button onclick="toggleSidebar()" class="text-xs text-gray-400 hover:text-white sm:hidden">✕ إخفاء</button>
         </div>
@@ -338,7 +336,7 @@
         
         try {
             socket = new WebSocket(wsUrl);
-            socket.onopen = () => console.log("تم الاتصال بالسيرفر.");
+            socket.onopen = () => console.log("تم الاتصال بالشبكة.");
 
             socket.onmessage = (event) => {
                 try {
@@ -379,7 +377,7 @@
                         updateAdminUI(data);
                     } else if (data.type === 'EATEN') {
                         document.getElementById('respawnOverlay').classList.remove('hidden');
-                        showNotification(`تم ابتلاعك بواسطة ${data.eatenBy}`, 'error');
+                        showNotification(`تم امتصاص طاقتك بواسطة ${data.eatenBy}`, 'error');
                     }
                 } catch (e) {}
             };
@@ -402,7 +400,7 @@
 
         if (actEl) actEl.innerText = players.length;
         if (botEl) botEl.innerText = bots.length;
-        if (gstEl) gstEl.innerText = guests.reduce((acc, g) => acc + (g.points || 0), 0);
+        if (gstEl) gstEl.innerText = guests.reduce((acc, g) => acc + (g.points || 0), 0) + ' PWR';
 
         if (table && syncData.standTotals) {
             table.innerHTML = Object.keys(syncData.standTotals).map(code => {
@@ -415,7 +413,7 @@
                         <td class="p-3 text-lg">${info.flag}</td>
                         <td class="p-3 font-bold text-white">${info.name}</td>
                         <td class="p-3 font-mono text-cyan-400">${code}</td>
-                        <td class="p-3 font-mono font-bold text-amber-400">${totalPts} $</td>
+                        <td class="p-3 font-mono font-bold text-amber-400">⚡ ${totalPts} PWR</td>
                         <td class="p-3 font-mono text-emerald-400">${activeInCountry}</td>
                     </tr>
                 `;
@@ -505,12 +503,9 @@
         camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.targetZoom * zoomFactor));
     }, { passive: false });
 
-    // ====================================================
-    // 🛠️ النظام المحدث للتحكم بالكرة وإلغاء تراكم الحركة
-    // ====================================================
     let lastTargetSendTime = 0;
     let pendingTarget = null;
-    const TARGET_SEND_INTERVAL = 30; // تقنين الإرسال كل 30 ملي ثانية لعدم إغراق الشبكة
+    const TARGET_SEND_INTERVAL = 30;
 
     function dispatchTarget() {
         if (!pendingTarget) return;
@@ -522,7 +517,7 @@
                 y: pendingTarget.y 
             }));
             lastTargetSendTime = Date.now();
-            pendingTarget = null; // تفريغ الذاكرة المؤقتة لمنع تراكم الأوامر القديمة
+            pendingTarget = null;
         }
     }
 
@@ -569,13 +564,16 @@
                         <span class="truncate font-bold">${flag} ${name}</span>
                     </div>
                     <div class="flex items-center gap-2">
-                        <span class="font-mono font-bold text-cyan-300">${points} $</span>
+                        <span class="font-mono font-bold text-cyan-300">⚡ ${points} PWR</span>
                     </div>
                 </li>
             `;
         }).join('');
     }
 
+    // ====================================================
+    // ⚡ رسم المدرج كمستودع طاقة يتفاعل إشعاع محيطه مع كمية الطاقة
+    // ====================================================
     function drawStands() {
         if (!standLocations) return;
 
@@ -588,9 +586,18 @@
             const landmark = countryLandmarks[code];
             const img = monumentImages[code];
             const themeColor = landmark?.color || "#00f5ff";
-            const totalBalance = Number(standTotals[code] || 0).toLocaleString();
+            
+            // حساب قوة الطاقة لتحديد شدة الإشعاع والمحيط
+            const rawPoints = Number(standTotals[code] || 0);
+            const totalEnergy = rawPoints.toLocaleString();
+
+            // معادلة الشدة الإشعاعية وسمك حدود المستودع بناءً على الطاقة
+            const glowIntensity = Math.min(300, 40 + Math.pow(rawPoints, 0.4) * 5);
+            const borderThickness = Math.min(400, 100 + Math.pow(rawPoints, 0.35) * 4);
 
             ctx.save();
+            
+            // خلفية وصورة المستودع
             if (img && img.complete && img.naturalWidth !== 0) {
                 ctx.globalAlpha = 0.35;
                 ctx.drawImage(img, x, y, size, size);
@@ -600,25 +607,31 @@
                 ctx.fillRect(x, y, size, size);
             }
 
+            // رسم محيط المستودع المشع الذي يتفاعل مع شدة الطاقة
             ctx.strokeStyle = themeColor;
-            ctx.lineWidth = 120;
-            ctx.shadowBlur = 100;
+            ctx.lineWidth = borderThickness;
+            ctx.shadowBlur = glowIntensity;
             ctx.shadowColor = themeColor;
             ctx.strokeRect(x, y, size, size);
+            
+            // مظهر التعتيم الداخلي للمستودع
             ctx.shadowBlur = 0;
-
-            ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
+            ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
             ctx.fillRect(x, y, size, size);
 
+            // النصوص والمعلومات داخل مستودع الطاقة
             ctx.fillStyle = "#ffffff";
             ctx.font = "bold 600px 'Tajawal'";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText(`${landmark?.flag || ''} مدرج ${landmark?.name || code}`, stand.x, stand.y - 400);
+            ctx.fillText(`${landmark?.flag || ''} مستودع ${landmark?.name || code}`, stand.x, stand.y - 450);
 
-            ctx.font = "bold 500px 'Sora'";
+            // عرض الطاقة الإجمالية للمستودع برمز الباواربصورة إشعاعية
+            ctx.font = "bold 550px 'Sora'";
             ctx.fillStyle = "#00ffff";
-            ctx.fillText(`إجمالي الكتلة: ${totalBalance} $`, stand.x, stand.y + 400);
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = "#00ffff";
+            ctx.fillText(`⚡ ${totalEnergy} PWR`, stand.x, stand.y + 450);
 
             ctx.restore();
         });
@@ -656,6 +669,9 @@
         ctx.beginPath(); ctx.arc(centerX, centerY, 10000, 0, Math.PI * 2); ctx.stroke();
     }
 
+    // ====================================================
+    // ⚡ رسم الكرة مع إيضاح رقم الطاقة / الباواربصورة صريحة
+    // ====================================================
     function drawOrb(p) {
         if (!p || typeof p.x !== 'number' || typeof p.y !== 'number') return;
         
@@ -706,12 +722,17 @@
         
         const flag = p.country?.flag || '';
         const name = p.name || 'لاعب';
-        const displayBalance = Number(p.points || 0).toLocaleString();
+        const powerValue = Number(p.points || 0).toLocaleString();
 
+        // اسم اللاعب والعلم
         ctx.fillText(`${flag} ${name}`, 0, -fontSize * 0.7);
+        
+        // عرض الرقم كباوار/طاقة داخل الكرة
         ctx.font = `bold ${fontSize * 0.85}px 'Sora'`;
         ctx.fillStyle = "#00ffff";
-        ctx.fillText(`${displayBalance} $`, 0, fontSize * 0.7);
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = "#00ffff";
+        ctx.fillText(`⚡ ${powerValue} PWR`, 0, fontSize * 0.7);
 
         ctx.restore();
     }
@@ -721,7 +742,6 @@
 
         Object.values(activePlayers).forEach(p => {
             if (p.targetX !== undefined && p.targetY !== undefined) {
-                // استخدام معامل تنعيم أعلى للاعب المحلي لزيادة الاستجابة وسرعة الحركة
                 const lerpFactor = (p.id === currentUserId) ? 0.45 : 0.25;
                 p.x += (p.targetX - p.x) * lerpFactor;
                 p.y += (p.targetY - p.y) * lerpFactor;
