@@ -238,7 +238,7 @@ wss.on('connection', async (ws, req) => {
     }
 
     const isGuest = socketId.startsWith('guest_');
-    const balance = isGuest ? 10 : Number(profileData?.points_balance || 0);
+    const balance = isGuest ? 100 : Number(profileData?.points_balance || 0);
     const country = profileData?.country_code || selectedCountry;
     const initRadius = calculateRadius(balance);
     const initialSpawn = getRandomOnPitchPosition(initRadius);
