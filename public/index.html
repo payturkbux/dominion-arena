@@ -38,10 +38,31 @@
 </head>
 <body class="text-white relative w-screen h-screen select-none overflow-hidden">
 
+    <!-- 🚩 نافذة اختيار الدولة البارزة عند الدخول -->
+    <div id="countrySelectModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
+        <div class="glass-hud p-6 sm:p-8 rounded-3xl w-full max-w-md border border-cyan-500/50 text-center shadow-2xl space-y-5">
+            <div class="text-5xl">🚩</div>
+            <h2 class="text-2xl font-black text-cyan-400">اختر دولتك للبدء</h2>
+            <p class="text-xs text-gray-300 leading-relaxed">اختر علم الدولة التي تريد تمثيلها والمنافسة باسمها في الساحة الكبرى:</p>
+
+            <select id="countrySelectDropdown" class="w-full px-4 py-3.5 bg-gray-900 border border-cyan-500/40 rounded-2xl text-white text-sm font-bold focus:outline-none focus:border-cyan-400 transition cursor-pointer">
+                <option value="SY">🇸🇾 سوريا (SY)</option>
+                <option value="SA">🇸🇦 السعودية (SA)</option>
+                <option value="TR">🇹🇷 تركيا (TR)</option>
+                <option value="EG">🇪🇬 مصر (EG)</option>
+                <option value="AE">🇦🇪 الإمارات (AE)</option>
+            </select>
+
+            <button onclick="confirmCountryAndStart()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold py-3.5 rounded-2xl text-sm shadow-xl active:scale-95 transition">
+                🚀 دخول الساحة الآن
+            </button>
+        </div>
+    </div>
+
     <div id="toastContainer" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
     <div id="respawnOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-        <div class="glass-hud p-8 rounded-3xl w-full max-w-md border border-red-500/50 text-center shadow-2xl space-y-5 animate-bounce-short">
+        <div class="glass-hud p-8 rounded-3xl w-full max-w-md border border-red-500/50 text-center shadow-2xl space-y-5">
             <div class="text-6xl">💥</div>
             <h2 class="text-2xl font-black text-red-400">تم ابتلاع كرتك!</h2>
             <p id="respawnText" class="text-sm text-gray-300 leading-relaxed">لقد خسرت نقطة واحدة وتم إخراجك إلى المدرجات.</p>
@@ -171,20 +192,21 @@
     window.addEventListener('resize', resize);
     resize();
 
-    // 🏟️ الأبعاد الكبرى الجديدة للساحة المحدثة (توسيع بنسبة +30%)
-    const PITCH_BOUNDS = { minX: 0, maxX: 10000, minY: 0, maxY: 7000 };
+    // 🏟️ أبعاد الساحة المضاعفة رسميًا (عريضة جداً)
+    const PITCH_BOUNDS = { minX: 0, maxX: 14000, minY: 0, maxY: 8000 };
 
-    // نقطة المنتصف الجديدة
+    // نقطة المنتصف
     const centerX = (PITCH_BOUNDS.maxX + PITCH_BOUNDS.minX) / 2;
     const centerY = (PITCH_BOUNDS.maxY + PITCH_BOUNDS.minY) / 2;
 
-    let camera = { x: centerX, y: centerY, zoom: 0.20, targetZoom: 0.20 };
-    const MIN_ZOOM = 0.10;
+    let camera = { x: centerX, y: centerY, zoom: 0.15, targetZoom: 0.15 };
+    const MIN_ZOOM = 0.08;
     const MAX_ZOOM = 1.20;
 
     let activePlayers = {};
     let standVault = {};
     let currentUserProfile = null;
+    let selectedCountryCode = 'SY'; // القيمة الافتراضية
     let currentUserId = localStorage.getItem('dominion_user_id') || `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
 
     function calculateRadius(points) {
@@ -208,10 +230,17 @@
         monumentImages[code] = img;
     });
 
+    function confirmCountryAndStart() {
+        const dropdown = document.getElementById('countrySelectDropdown');
+        if (dropdown) selectedCountryCode = dropdown.value;
+        document.getElementById('countrySelectModal').classList.add('hidden');
+        setupWebSocket();
+    }
+
     function setupWebSocket() {
         if (socket) socket.close();
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}?userId=${currentUserId}`;
+        const wsUrl = `${protocol}//${window.location.host}?userId=${currentUserId}&country=${selectedCountryCode}`;
         
         socket = new WebSocket(wsUrl);
 
@@ -372,7 +401,7 @@
     }
 
     window.addEventListener('mousemove', (e) => {
-        if (e.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay')) return;
+        if (e.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
         handlePointerMove(e.clientX, e.clientY);
     });
 
@@ -390,7 +419,7 @@
             initialPinchDistance = getPinchDistance(e.touches);
             initialTargetZoom = camera.targetZoom;
         } else if (e.touches.length === 1) {
-            if (e.touches[0].target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay')) return;
+            if (e.touches[0].target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
             handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
         }
     }, { passive: true });
@@ -401,7 +430,7 @@
             const zoomFactor = currentDistance / initialPinchDistance;
             camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, initialTargetZoom * zoomFactor));
         } else if (e.touches.length === 1) {
-            if (e.touches[0].target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay')) return;
+            if (e.touches[0].target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
             handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
         }
     }, { passive: true });
@@ -440,16 +469,15 @@
         }).join('');
     }
 
-    // 🏟️ رسم الساحة العرضية المكبرة بالكامل
     function drawStadiumPitch() {
         ctx.fillStyle = "#0c1220";
-        ctx.fillRect(-2000, -2000, 14000, 11000);
+        ctx.fillRect(-4000, -4000, 22000, 16000);
 
-        let lightGrad = ctx.createRadialGradient(centerX, centerY, 1000, centerX, centerY, 8000);
+        let lightGrad = ctx.createRadialGradient(centerX, centerY, 1000, centerX, centerY, 12000);
         lightGrad.addColorStop(0, "rgba(0, 245, 255, 0.12)");
         lightGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
         ctx.fillStyle = lightGrad;
-        ctx.fillRect(-2000, -2000, 14000, 11000);
+        ctx.fillRect(-4000, -4000, 22000, 16000);
 
         let pitchWidth = PITCH_BOUNDS.maxX - PITCH_BOUNDS.minX;
         let pitchHeight = PITCH_BOUNDS.maxY - PITCH_BOUNDS.minY;
@@ -462,21 +490,21 @@
         ctx.fillRect(PITCH_BOUNDS.minX, PITCH_BOUNDS.minY, pitchWidth, pitchHeight);
 
         ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
-        for (let x = PITCH_BOUNDS.minX; x < PITCH_BOUNDS.maxX; x += 500) {
-            ctx.fillRect(x, PITCH_BOUNDS.minY, 250, pitchHeight);
+        for (let x = PITCH_BOUNDS.minX; x < PITCH_BOUNDS.maxX; x += 700) {
+            ctx.fillRect(x, PITCH_BOUNDS.minY, 350, pitchHeight);
         }
 
         ctx.strokeStyle = "#00f5ff";
-        ctx.lineWidth = 20;
-        ctx.shadowBlur = 40;
+        ctx.lineWidth = 25;
+        ctx.shadowBlur = 50;
         ctx.shadowColor = "#00f5ff";
         ctx.strokeRect(PITCH_BOUNDS.minX, PITCH_BOUNDS.minY, pitchWidth, pitchHeight);
         ctx.shadowBlur = 0;
 
         ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
-        ctx.lineWidth = 14;
+        ctx.lineWidth = 18;
         ctx.beginPath(); ctx.moveTo(centerX, PITCH_BOUNDS.minY); ctx.lineTo(centerX, PITCH_BOUNDS.maxY); ctx.stroke();
-        ctx.beginPath(); ctx.arc(centerX, centerY, 700, 0, Math.PI * 2); ctx.stroke();
+        ctx.beginPath(); ctx.arc(centerX, centerY, 1000, 0, Math.PI * 2); ctx.stroke();
     }
 
     function drawOrb(p) {
@@ -554,7 +582,6 @@
 
     if (!currentUserId.startsWith('guest_')) fetchUserProfile(currentUserId);
     updateAuthUI();
-    setupWebSocket();
     render();
 </script>
 </body>

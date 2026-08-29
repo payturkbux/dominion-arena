@@ -18,31 +18,36 @@ if (SUPABASE_URL && SUPABASE_KEY) {
     supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 }
 
-// 🏟️ أبعاد الساحة الفعلية
-const PITCH_BOUNDS = { minX: 500, maxX: 6700, minY: 1900, maxY: 5500 };
+// 🏟️ أبعاد الساحة الكبرى المضاعفة والمطابقة تماماً للعميل
+const PITCH_BOUNDS = { minX: 0, maxX: 14000, minY: 0, maxY: 8000 };
 
+// 🚩 مواقع مدرجات الدول المحدثة حول حدود الساحة
 const STAND_LOCATIONS = {
-    "SY": { x: 1200, y: 1100 },
-    "SA": { x: 2400, y: 1100 },
-    "TR": { x: 3600, y: 1100 },
-    "EG": { x: 4800, y: 1100 },
-    "AE": { x: 6000, y: 1100 }
+    "SY": { x: 7000,  y: -700 },  // المدرج الشمالي (سوريا)
+    "SA": { x: 7000,  y: 8700 },  // المدرج الجنوبي (السعودية)
+    "TR": { x: -700,  y: 4000 },  // المدرج الغربي (تركيا)
+    "EG": { x: 14700, y: 4000 },  // المدرج الشرقي (مصر)
+    "AE": { x: 14700, y: 1000 }   // مدرج الإمارات
 };
 
 let activePlayers = {}; 
 let standVault = {};     
 
-const BOT_NAMES = ['Ghost_Hunter', 'Shadow_King', 'Vortex_99', 'Neon_Blade', 'Zeus_BOY', 'Alpha_Wolf', 'Storm_Rider', 'Titan_X'];
+const BOT_NAMES = ['Ghost_Hunter', 'Shadow_King', 'Vortex_99', 'Neon_Blade', 'Zeus_BOY', 'Alpha_Wolf', 'Storm_Rider', 'Titan_X', 'Cyber_Samurai', 'Phantom_Lord', 'Odin_King', 'Valkyrie_X', 'Apex_Predator', 'Blaze_Strike', 'Omega_Prime'];
 const COUNTRIES = ['SY', 'SA', 'TR', 'EG', 'AE'];
 
+// ⚽ مضاعفة حجم الكرات
 function calculateRadius(points) {
     const val = Math.max(0, Number(points) || 0);
-    const calculatedRadius = 30 + (Math.pow(val, 0.55) * 8);
-    return Math.min(300, Math.max(30, Math.round(calculatedRadius)));
+    // يبدأ الحجم من 60 بدلاً من 30 ومضاعفة النمو
+    const calculatedRadius = 60 + (Math.pow(val, 0.55) * 16);
+    return Math.min(800, Math.max(60, Math.round(calculatedRadius)));
 }
 
+// 🐌 تقليل السرعة لتكون ثقيلة وسلسة
 function calculateSpeed(radius) {
-    return Math.max(0.025, 0.075 - (radius / 3000));
+    // سرعة أبطأ تناسب الحجم المكبر
+    return Math.max(0.012, 0.040 - (radius / 6000));
 }
 
 function getCountryFlag(code) {
@@ -53,8 +58,8 @@ function getCountryFlag(code) {
 function getRandomOffPitchPosition(countryCode) {
     const stand = STAND_LOCATIONS[countryCode] || STAND_LOCATIONS['SY'];
     return {
-        x: stand.x + (Math.random() * 300 - 150),
-        y: stand.y + (Math.random() * 150 - 75)
+        x: stand.x + (Math.random() * 400 - 200),
+        y: stand.y + (Math.random() * 200 - 100)
     };
 }
 
@@ -74,7 +79,7 @@ function spawnBot(botId) {
     const randomName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
     const randomCountry = COUNTRIES[Math.floor(Math.random() * COUNTRIES.length)];
     
-    const randomInitialPoints = Math.floor(Math.random() * 16);
+    const randomInitialPoints = Math.floor(Math.random() * 25);
     const radius = calculateRadius(randomInitialPoints);
     const pos = getRandomOnPitchPosition(radius);
 
@@ -94,7 +99,8 @@ function spawnBot(botId) {
     };
 }
 
-for (let i = 1; i <= 6; i++) {
+// 🤖 زيادة عدد البوتات إلى 18 بوت
+for (let i = 1; i <= 18; i++) {
     spawnBot(`bot_${i}`);
 }
 
@@ -133,7 +139,6 @@ async function loadOfflinePlayersToStands() {
 async function updatePointsSafely(userId, delta) {
     if (!supabase || !userId || userId.startsWith('guest_') || userId.startsWith('bot_')) return;
     try {
-        // الاستعلام عن رصيد النقاط الحالي لتفادي التجاوز بالسالب
         const { data, error } = await supabase
             .from('profiles')
             .select('points_balance')
@@ -174,6 +179,8 @@ wss.on('connection', async (ws, req) => {
 
     const urlParams = new URLSearchParams(req.url.replace(/^.*\?/, ''));
     const userId = urlParams.get('userId');
+    const selectedCountry = urlParams.get('country') || 'SY'; // استقبال الدولة المختارة من النافذة
+    
     const socketId = (userId && !userId.startsWith('guest_')) 
         ? userId 
         : 'guest_' + Math.random().toString(36).substr(2, 7);
@@ -187,7 +194,7 @@ wss.on('connection', async (ws, req) => {
     }
 
     const balance = Number(profileData?.points_balance || 0);
-    const country = profileData?.country_code || 'SY';
+    const country = profileData?.country_code || selectedCountry;
     const initRadius = calculateRadius(balance);
     const initialSpawn = getRandomOnPitchPosition(initRadius);
 
@@ -220,7 +227,7 @@ wss.on('connection', async (ws, req) => {
                     let p = standVault[socketId];
                     delete standVault[socketId];
                     
-                    const spawnPos = getRandomOnPitchPosition(p.radius || 30);
+                    const spawnPos = getRandomOnPitchPosition(p.radius || 60);
                     
                     p.inStand = false;
                     p.x = spawnPos.x;
@@ -233,7 +240,8 @@ wss.on('connection', async (ws, req) => {
             } else if (data.type === 'TARGET') {
                 const current = activePlayers[socketId];
                 if (current && typeof data.x === 'number' && typeof data.y === 'number') {
-                    const r = current.radius || 30;
+                    const r = current.radius || 60;
+                    // ضبط الحدود المطلقة للحركة داخل الساحة الكبرى
                     current.targetX = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, data.x));
                     current.targetY = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, data.y));
                 }
@@ -257,7 +265,6 @@ wss.on('connection', async (ws, req) => {
     });
 });
 
-// 🧹 تنظيف الاتصالات الميتة كل 30 ثانية (Heartbeat Monitor)
 const pingInterval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) return ws.terminate();
@@ -346,7 +353,7 @@ function executeEat(predator, victim) {
 setInterval(() => {
     Object.values(activePlayers).forEach(p => {
         if (p.isBot) {
-            if (Math.random() < 0.02 || Math.hypot(p.targetX - p.x, p.targetY - p.y) < 60) {
+            if (Math.random() < 0.02 || Math.hypot(p.targetX - p.x, p.targetY - p.y) < 100) {
                 const target = getRandomOnPitchPosition(p.radius);
                 p.targetX = target.x;
                 p.targetY = target.y;
@@ -364,7 +371,8 @@ setInterval(() => {
                 p.y += dy * speedFactor;
             }
 
-            const r = p.radius || 30;
+            const r = p.radius || 60;
+            // ضمان عدم خروج الكرة خارج إحداثيات الساحة الكبرى
             p.x = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, p.x));
             p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, p.y));
         }
