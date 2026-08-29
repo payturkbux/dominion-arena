@@ -11,9 +11,19 @@
     <style>
         body { font-family: 'Tajawal', sans-serif; background-color: #0c101c; margin: 0; overflow: hidden; touch-action: none; }
         .glass-hud { background: rgba(10, 14, 23, 0.85); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.12); }
+        
+        /* حركة ظهور الإشعارات */
+        @keyframes slideIn {
+            from { transform: translateY(-100%) translateX(-50%); opacity: 0; }
+            to { transform: translateY(0) translateX(-50%); opacity: 1; }
+        }
+        .toast-animate { animation: slideIn 0.3s ease-out forwards; }
     </style>
 </head>
 <body class="text-white relative w-screen h-screen select-none">
+
+    <!-- نظام الإشعارات العائم للخطأ والنجاح -->
+    <div id="toastContainer" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
     <!-- HUD Header -->
     <header class="absolute top-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-6 glass-hud px-8 py-3 rounded-2xl shadow-2xl border border-cyan-500/30">
@@ -27,14 +37,18 @@
     </header>
 
     <!-- زر تسجيل الدخول (يظهر في حال كان زائر) -->
-    <div class="absolute top-6 left-6 z-30">
+    <div class="absolute top-6 left-6 z-30 flex gap-2">
         <button id="authBtn" onclick="openLoginModal()" class="glass-hud px-4 py-2.5 rounded-2xl flex items-center gap-2 border border-cyan-500/40 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition shadow-2xl">
             <span id="authBtnIcon">🔑</span>
             <span id="authBtnText">تسجيل الدخول</span>
         </button>
+        <button id="logoutBtn" onclick="submitLogout()" class="hidden glass-hud px-3 py-2.5 rounded-2xl flex items-center gap-1 border border-red-500/40 text-xs font-bold text-red-400 hover:bg-red-500/20 active:scale-95 transition shadow-2xl">
+            <span>🚪</span>
+            <span>خروج</span>
+        </button>
     </div>
 
-    <!-- نافذة تسجيل الدخول المنبثقة المعدلة (Email & Password Modal) -->
+    <!-- نافذة تسجيل الدخول المنبثقة (Email & Password Modal) -->
     <div id="loginModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
         <div class="glass-hud p-6 rounded-3xl w-full max-w-sm border border-cyan-500/40 text-center shadow-2xl space-y-4">
             <div class="text-4xl">⚽</div>
@@ -46,10 +60,13 @@
                 <input type="password" id="userPasswordInput" placeholder="كلمة السر" class="w-full px-4 py-3 bg-gray-900/90 border border-cyan-500/30 rounded-xl text-white text-xs text-right font-mono focus:outline-none focus:border-cyan-400 transition">
             </div>
 
-            <div id="loginError" class="hidden text-xs text-red-400 font-bold"></div>
+            <div id="loginError" class="hidden text-xs text-red-400 font-bold bg-red-950/50 p-2 rounded-lg border border-red-500/30"></div>
             
             <div class="flex gap-2">
-                <button onclick="submitLogin()" class="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white py-2.5 rounded-xl text-xs font-bold transition shadow-lg active:scale-95">دخول</button>
+                <button id="submitLoginBtn" onclick="submitLogin()" class="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white py-2.5 rounded-xl text-xs font-bold transition shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                    <span id="loginBtnSpinner" class="hidden w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    <span id="loginBtnText">دخول</span>
+                </button>
                 <button onclick="closeLoginModal()" class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-xl text-xs font-bold transition active:scale-95">إلغاء</button>
             </div>
         </div>
@@ -70,13 +87,38 @@
     // ----------------------------------------------------------------
     // 1. إعداد الاتصال بقاعدة بيانات Supabase
     // ----------------------------------------------------------------
-    const SUPABASE_URL = "https://bwbgfdteocewitdzrysg.supabase.co"; // ضع رابط مشروعك هنا
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3YmdmZHRlb2Nld2l0ZHpyeXNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4NTE2MTMsImV4cCI6MjEwMzQyNzYxM30.C7hId5uF-p_7ibGSs0P7a2yxpOD-Zu4ON-lu7Pivn6k";                // ضع مفتاح Anon Key هنا
-    
-    // تهيئة العميل (إذا كان المفتاح مضافاً)
-    const supabaseClient = (SUPABASE_URL !== "https://YOUR_PROJECT_ID.supabase.co") 
-        ? supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) 
-        : null;
+    const SUPABASE_URL = "https://bwbgfdteocewitdzrysg.supabase.co"; 
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3YmdmZHRlb2Nld2l0ZHpyeXNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4NTE2MTMsImV4cCI6MjEwMzQyNzYxM30.C7hId5uF-p_7ibGSs0P7a2yxpOD-Zu4ON-lu7Pivn6k";
+
+    let supabaseClient = null;
+    try {
+        if (typeof supabase !== 'undefined' && SUPABASE_URL && SUPABASE_ANON_KEY) {
+            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        }
+    } catch (e) {
+        console.error("خطأ تهيئة Supabase:", e);
+    }
+
+    // ----------------------------------------------------------------
+    // نظام الإشعارات الديناميكي للأخطاء والتنبيهات (Toast Notifications)
+    // ----------------------------------------------------------------
+    function showNotification(message, type = 'error') {
+        const container = document.getElementById('toastContainer');
+        const toast = document.createElement('div');
+        
+        const bgColor = type === 'error' ? 'bg-red-900/90 border-red-500/50 text-red-200' : 'bg-emerald-900/90 border-emerald-500/50 text-emerald-200';
+        const icon = type === 'error' ? '⚠️' : '✅';
+
+        toast.className = `toast-animate glass-hud px-4 py-2.5 rounded-xl border text-xs font-bold shadow-2xl flex items-center gap-2 ${bgColor} pointer-events-auto`;
+        toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+        
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transition = 'opacity 0.5s ease';
+            setTimeout(() => toast.remove(), 500);
+        }, 4000);
+    }
 
     const canvas = document.getElementById('worldCanvas');
     const ctx = canvas.getContext('2d');
@@ -101,7 +143,6 @@
     let selfId = null;
     let socket = null;
 
-    // مصفوفة كرات المستخدمين (ستُملأ تلقائياً من قاعدة البيانات)
     let staticUsers = [];
 
     // ----------------------------------------------------------------
@@ -109,23 +150,22 @@
     // ----------------------------------------------------------------
     async function loadRealUsersFromDB() {
         if (!supabaseClient) {
-            console.log("يرجى إدخال بيانات SUPABASE_URL و SUPABASE_ANON_KEY في أعلى الكود للجلب التلقائي.");
+            showNotification("لم يتم الاتصال بمحرك Supabase", "error");
             return;
         }
 
         try {
-            // قم بتغيير 'profiles' إلى اسم الجدول لديك في Supabase (مثلاً 'users' أو 'accounts')
             const { data, error } = await supabaseClient
                 .from('profiles') 
                 .select('*');
 
             if (error) {
                 console.error("خطأ في جلب بيانات المستخدمين:", error);
+                showNotification("تعذر جلب بيانات المتصدرين من القاعدة", "error");
                 return;
             }
 
             if (data && data.length > 0) {
-                // تحويل بيانات قاعدة البيانات إلى كرات ورسمها في مواقع متناسقة بالملعب
                 staticUsers = data.map((u, index) => ({
                     id: u.id || `db_${index}`,
                     name: u.full_name || u.username || u.name || "لاعب",
@@ -136,7 +176,6 @@
                     },
                     tier: u.tier || (u.balance > 10000 ? "Gold" : u.balance > 5000 ? "Silver" : "Bronze"),
                     radius: 40,
-                    // توزيع الكرات في الملعب تلقائياً بصفوف وأعمدة
                     x: 1200 + (index % 12) * 420,
                     y: 2200 + Math.floor(index / 12) * 320
                 }));
@@ -145,6 +184,7 @@
             }
         } catch (err) {
             console.error("تعذر الاتصال بقاعدة البيانات:", err);
+            showNotification("خطأ في الاتصال بقاعدة البيانات", "error");
         }
     }
 
@@ -169,13 +209,16 @@
     function updateAuthUI() {
         const authBtnText = document.getElementById('authBtnText');
         const authBtnIcon = document.getElementById('authBtnIcon');
+        const logoutBtn = document.getElementById('logoutBtn');
         
         if (currentUserId && !currentUserId.startsWith('guest_')) {
             if (authBtnText) authBtnText.innerText = 'حسابي المسجل';
             if (authBtnIcon) authBtnIcon.innerText = '👤';
+            if (logoutBtn) logoutBtn.classList.remove('hidden');
         } else {
             if (authBtnText) authBtnText.innerText = 'تسجيل الدخول';
             if (authBtnIcon) authBtnIcon.innerText = '🔑';
+            if (logoutBtn) logoutBtn.classList.add('hidden');
         }
     }
 
@@ -186,25 +229,33 @@
         const wsHost = window.location.host || 'dominion-arena-o372.onrender.com';
         const wsUrl = `${protocol}//${wsHost}${userId ? '?userId=' + encodeURIComponent(userId) : ''}`;
         
-        socket = new WebSocket(wsUrl);
+        try {
+            socket = new WebSocket(wsUrl);
 
-        socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.type === 'INIT') {
-                selfId = data.selfId;
-            } else if (data.type === 'SYNC') {
-                activePlayers = data.activePlayers || {};
-                standVault = data.standVault || {};
-                dynamicStands = data.dynamicStands || {};
-                
-                const myOrb = activePlayers[selfId] || standVault[selfId];
-                if (myOrb) {
-                    camera.x += (myOrb.x - camera.x) * 0.1;
-                    camera.y += (myOrb.y - camera.y) * 0.1;
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.type === 'INIT') {
+                    selfId = data.selfId;
+                } else if (data.type === 'SYNC') {
+                    activePlayers = data.activePlayers || {};
+                    standVault = data.standVault || {};
+                    dynamicStands = data.dynamicStands || {};
+                    
+                    const myOrb = activePlayers[selfId] || standVault[selfId];
+                    if (myOrb) {
+                        camera.x += (myOrb.x - camera.x) * 0.1;
+                        camera.y += (myOrb.y - camera.y) * 0.1;
+                    }
+                    updateLeaderboard();
                 }
-                updateLeaderboard();
-            }
-        };
+            };
+
+            socket.onerror = () => {
+                showNotification("تعذر الاتصال بسيرفر اللعب المباشر (WebSocket)", "error");
+            };
+        } catch (e) {
+            console.error("خطأ WebSocket:", e);
+        }
     }
 
     function openLoginModal() {
@@ -217,29 +268,96 @@
         document.getElementById('loginError').classList.add('hidden');
     }
 
+    // ----------------------------------------------------------------
+    // 3. تصحيح تسجيل الدخول والربط الفعلي مع Supabase Auth
+    // ----------------------------------------------------------------
     async function submitLogin() {
-        const email = document.getElementById('userEmailInput').value.trim();
-        const password = document.getElementById('userPasswordInput').value.trim();
+        const emailInput = document.getElementById('userEmailInput');
+        const passwordInput = document.getElementById('userPasswordInput');
         const errorEl = document.getElementById('loginError');
+        const spinner = document.getElementById('loginBtnSpinner');
+        const btnText = document.getElementById('loginBtnText');
+
+        const email = emailInput.value.trim();
+        const password = passwordInput.value.trim();
+
+        errorEl.classList.add('hidden');
 
         if (!email || !password) {
-            errorEl.innerText = "يرجى كتابة البريد الإلكتروني وكلمة السر";
+            const msg = "يرجى كتابة البريد الإلكتروني وكلمة السر كاملة";
+            errorEl.innerText = msg;
             errorEl.classList.remove('hidden');
+            showNotification(msg, "error");
             return;
         }
 
-        currentUserId = email; 
-        localStorage.setItem('dominion_user_id', currentUserId);
-        
+        if (!supabaseClient) {
+            const msg = "تعذر الاتصال بمحرك Supabase Auth";
+            errorEl.innerText = msg;
+            errorEl.classList.remove('hidden');
+            showNotification(msg, "error");
+            return;
+        }
+
+        // إظهار سبينر التحميل
+        spinner.classList.remove('hidden');
+        btnText.innerText = "جاري التحقق...";
+
+        try {
+            // تسجيل الدخول الفعلي في Supabase
+            const { data, error } = await supabaseClient.auth.signInWithPassword({
+                email: email,
+                password: password
+            });
+
+            if (error) {
+                let errorMsg = "بيانات الدخول غير صحيحة";
+                if (error.message.includes("Invalid login credentials")) {
+                    errorMsg = "البريد الإلكتروني أو كلمة السر غير صحيحة";
+                } else if (error.message.includes("Email not confirmed")) {
+                    errorMsg = "البريد الإلكتروني غير مفعّل بعد";
+                } else {
+                    errorMsg = error.message;
+                }
+
+                errorEl.innerText = errorMsg;
+                errorEl.classList.remove('hidden');
+                showNotification(errorMsg, "error");
+            } else if (data && data.user) {
+                // النجاح في تسجيل الدخول
+                currentUserId = data.user.id;
+                localStorage.setItem('dominion_user_id', currentUserId);
+                
+                showNotification("تم تسجيل الدخول بنجاح!", "success");
+                updateAuthUI();
+                closeLoginModal();
+                initWebSocket(currentUserId);
+            }
+        } catch (err) {
+            console.error("Login Exception:", err);
+            const msg = "حدث خطأ أثناء إجراء عملية الدخول";
+            errorEl.innerText = msg;
+            errorEl.classList.remove('hidden');
+            showNotification(msg, "error");
+        } finally {
+            spinner.classList.add('hidden');
+            btnText.innerText = "دخول";
+        }
+    }
+
+    async function submitLogout() {
+        if (supabaseClient) {
+            await supabaseClient.auth.signOut();
+        }
+        localStorage.removeItem('dominion_user_id');
+        currentUserId = '';
+        showNotification("تم تسجيل الخروج", "success");
         updateAuthUI();
-        closeLoginModal();
-        initWebSocket(currentUserId);
+        initWebSocket('');
     }
 
     updateAuthUI();
     initWebSocket(currentUserId);
-
-    // استدعاء دالة جلب بيانات المستخدمين فور تحميل الصفحة
     loadRealUsersFromDB();
 
     window.addEventListener('wheel', (e) => {
@@ -285,13 +403,13 @@
     }
 
     window.addEventListener('mousedown', (e) => {
-        if (e.target.closest('header, aside, button, #loginModal')) return;
+        if (e.target.closest('header, aside, button, #loginModal, #toastContainer')) return;
         handleActionPointer(e.clientX, e.clientY);
     });
 
     window.addEventListener('touchstart', (e) => {
         if (e.touches && e.touches.length > 0) {
-            if (e.touches[0].target.closest('header, aside, button, #loginModal')) return;
+            if (e.touches[0].target.closest('header, aside, button, #loginModal, #toastContainer')) return;
             handleActionPointer(e.touches[0].clientX, e.touches[0].clientY);
         }
     }, { passive: true });
@@ -484,10 +602,8 @@
         drawStadiumPitch();
         drawStandsStructure();
 
-        // 1. رسم الكرات المجلوبة تلقائياً من قاعدة البيانات
         staticUsers.forEach(p => drawOrb(p, false));
 
-        // 2. رسم كرات اللاعبين المتصلين حالياً عبر السيرفر (WebSocket)
         Object.values(standVault).forEach(p => drawOrb(p, true));
         Object.values(activePlayers).forEach(p => drawOrb(p, false));
 
