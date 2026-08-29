@@ -48,12 +48,21 @@ function getCountryFlag(code) {
     return flags[code] || "🚩";
 }
 
-// دالة لتوليد إحداثيات مضمونة خارج المضمار عند الابتلاع
+// دالة لتوليد إحداثيات مضمونة خارج المضمار (للمدرجات)
 function getRandomOffPitchPosition(countryCode) {
     const stand = STAND_LOCATIONS[countryCode] || STAND_LOCATIONS['SY'];
     return {
         x: stand.x + (Math.random() * 300 - 150),
         y: stand.y + (Math.random() * 150 - 75)
+    };
+}
+
+// 🎯 دالة جديدة لتوليد موقع رندم عشوائي بالكامل داخل حدود الملعب عند إعادة الدخول
+function getRandomOnPitchPosition(radius) {
+    const margin = radius + 50;
+    return {
+        x: Math.floor(Math.random() * (PITCH_BOUNDS.maxX - PITCH_BOUNDS.minX - 2 * margin)) + PITCH_BOUNDS.minX + margin,
+        y: Math.floor(Math.random() * (PITCH_BOUNDS.maxY - PITCH_BOUNDS.minY - 2 * margin)) + PITCH_BOUNDS.minY + margin
     };
 }
 
@@ -174,6 +183,8 @@ wss.on('connection', async (ws, req) => {
 
     const balance = Number(profileData?.points_balance || 0);
     const country = profileData?.country_code || 'SY';
+    const initRadius = calculateRadius(balance);
+    const initialSpawn = getRandomOnPitchPosition(initRadius);
 
     let player = standVault[socketId] || {
         id: socketId,
@@ -181,9 +192,9 @@ wss.on('connection', async (ws, req) => {
         points: balance,
         tier: profileData?.tier || 'Bronze',
         country: { code: country, flag: getCountryFlag(country) },
-        x: 3600,
-        y: 3700,
-        radius: calculateRadius(balance)
+        x: initialSpawn.x,
+        y: initialSpawn.y,
+        radius: initRadius
     };
 
     delete standVault[socketId];
@@ -203,11 +214,16 @@ wss.on('connection', async (ws, req) => {
                 if (standVault[socketId]) {
                     let p = standVault[socketId];
                     delete standVault[socketId];
+                    
+                    // 🎯 توليد مكان عشوائي تماماً داخل الملعب عند كل إعادة دخول
+                    const spawnPos = getRandomOnPitchPosition(p.radius || 30);
+                    
                     p.inStand = false;
-                    p.x = 3600 + (Math.random() * 400 - 200);
-                    p.y = 3700 + (Math.random() * 400 - 200);
-                    p.targetX = p.x;
-                    p.targetY = p.y;
+                    p.x = spawnPos.x;
+                    p.y = spawnPos.y;
+                    p.targetX = spawnPos.x;
+                    p.targetY = spawnPos.y;
+                    
                     activePlayers[socketId] = p;
                 }
             } else if (data.type === 'TARGET') {
@@ -261,7 +277,6 @@ function checkCollisions() {
     }
 }
 
-// 🎯 عند الابتلاع: نقل الضحية فوراً لخارج المضمار (المدرجات)
 function executeEat(predator, victim) {
     predator.points += 1;
     predator.radius = calculateRadius(predator.points);
@@ -274,7 +289,6 @@ function executeEat(predator, victim) {
     delete activePlayers[victim.id];
     victim.inStand = true;
 
-    // الحصول على موقع جديد خارج حدود الملعب تماماً
     const offPitchPos = getRandomOffPitchPosition(victim.country?.code);
     victim.x = offPitchPos.x;
     victim.y = offPitchPos.y;
@@ -329,4 +343,4 @@ setInterval(() => {
 }, 1000 / 30);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Agario Server with Off-Pitch Eaten Respawn running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Agario Server with Random On-Pitch Spawn running on port ${PORT}`));
