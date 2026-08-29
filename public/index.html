@@ -156,7 +156,7 @@
         console.error("Supabase Init Error:", e);
     }
 
-    // ⚡ دالة الرسالة الشفافة الومضة (تظهر في المنتصف وتختفي تلقائياً)
+    // ⚡ دالة الرسالة الشفافة الومضة
     function showNotification(message, type = 'error') {
         const container = document.getElementById('toastContainer');
         if (!container) return;
@@ -256,11 +256,6 @@
         if (dropdown) selectedCountryCode = dropdown.value;
         document.getElementById('countrySelectModal').classList.add('hidden');
 
-        canvas.requestPointerLock = canvas.requestPointerLock || canvas.mozRequestPointerLock;
-        if (canvas.requestPointerLock) {
-            canvas.onclick = () => canvas.requestPointerLock();
-        }
-
         setupWebSocket();
     }
 
@@ -285,8 +280,10 @@
                             if (!activePlayers[id]) {
                                 activePlayers[id] = { ...pData, targetX: pData.x, targetY: pData.y };
                             } else {
-                                activePlayers[id].targetX = pData.x;
-                                activePlayers[id].targetY = pData.y;
+                                activePlayers[id].x = pData.x;
+                                activePlayers[id].y = pData.y;
+                                activePlayers[id].targetX = pData.targetX !== undefined ? pData.targetX : pData.x;
+                                activePlayers[id].targetY = pData.targetY !== undefined ? pData.targetY : pData.y;
                                 activePlayers[id].points = pData.points;
                                 activePlayers[id].radius = calculateRadius(pData.points);
                                 activePlayers[id].isProtected = pData.isProtected;
@@ -330,35 +327,7 @@
         document.getElementById('respawnOverlay').classList.add('hidden');
     }
 
-    function triggerEatEffect(x, y, color, scale = 1) {
-        eatEffects.push({
-            x: x,
-            y: y,
-            radius: 10 * scale,
-            maxRadius: 100 * scale,
-            color: color || '#00f5ff',
-            alpha: 1.0
-        });
-    }
-
     function updatePhysics() {
-        const me = activePlayers[currentUserId];
-
-        if (me) {
-            me.targetX = Math.max(PITCH_BOUNDS.minX + me.radius, Math.min(PITCH_BOUNDS.maxX - me.radius, localTargetPos.x));
-            me.targetY = Math.max(PITCH_BOUNDS.minY + me.radius, Math.min(PITCH_BOUNDS.maxY - me.radius, localTargetPos.y));
-        }
-
-        Object.values(activePlayers).forEach(p => {
-            const lerpFactor = 0.1;
-            p.x += (p.targetX - p.x) * lerpFactor;
-            p.y += (p.targetY - p.y) * lerpFactor;
-
-            const r = p.radius || 60;
-            p.x = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, p.x));
-            p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, p.y));
-        });
-
         // تحديث تأثيرات الابتلاع
         for (let i = eatEffects.length - 1; i >= 0; i--) {
             const fx = eatEffects[i];
@@ -465,43 +434,36 @@
         }
     }, { passive: true });
 
-    function getWorldCoordinates(clientX, clientY) {
-        const worldX = (clientX - screenWidth / 2) / camera.zoom + camera.x;
-        const worldY = (clientY - screenHeight / 2) / camera.zoom + camera.y;
-        return { x: worldX, y: worldY };
-    }
+    // 🎯 تحويل إحداثيات الشاشة إلى إحداثيات الساحة الكبرى المطلقة
+    function sendTarget(clientX, clientY) {
+        const me = activePlayers[currentUserId];
+        if (!me) return;
 
-    function handlePointerMove(clientX, clientY, movementX = 0, movementY = 0) {
-        if (document.pointerLockElement === canvas) {
-            localTargetPos.x += movementX / camera.zoom;
-            localTargetPos.y += movementY / camera.zoom;
-        } else {
-            const worldPos = getWorldCoordinates(clientX, clientY);
-            localTargetPos.x = worldPos.x;
-            localTargetPos.y = worldPos.y;
-        }
+        // حساب الإحداثيات بالنسبة لمركز الكاميرا الحالي
+        const worldX = me.x + (clientX - screenWidth / 2) / camera.zoom;
+        const worldY = me.y + (clientY - screenHeight / 2) / camera.zoom;
 
-        localTargetPos.x = Math.max(PITCH_BOUNDS.minX, Math.min(PITCH_BOUNDS.maxX, localTargetPos.x));
-        localTargetPos.y = Math.max(PITCH_BOUNDS.minY, Math.min(PITCH_BOUNDS.maxY, localTargetPos.y));
+        const targetX = Math.max(PITCH_BOUNDS.minX, Math.min(PITCH_BOUNDS.maxX, worldX));
+        const targetY = Math.max(PITCH_BOUNDS.minY, Math.min(PITCH_BOUNDS.maxY, worldY));
 
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({
                 type: 'TARGET',
-                x: localTargetPos.x,
-                y: localTargetPos.y
+                x: targetX,
+                y: targetY
             }));
         }
     }
 
     window.addEventListener('mousemove', (e) => {
         if (e.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
-        handlePointerMove(e.clientX, e.clientY, e.movementX, e.movementY);
+        sendTarget(e.clientX, e.clientY);
     });
 
     window.addEventListener('touchmove', (e) => {
         if (e.touches.length === 1) {
             if (e.touches[0].target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
-            handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
+            sendTarget(e.touches[0].clientX, e.touches[0].clientY);
         }
     }, { passive: true });
 

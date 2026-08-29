@@ -76,7 +76,7 @@ function isGuestPlayer(player) {
 
 function getRandomOffPitchPosition(countryCode) {
     const stand = STAND_LOCATIONS[countryCode] || STAND_LOCATIONS['SY'];
-    const halfW = (stand.width || 2000) / 2;
+    const halfW = (stand.width || 2500) / 2;
     const halfH = (stand.height || 400) / 2;
 
     return {
@@ -118,7 +118,7 @@ function getStandTotals() {
     return totals;
 }
 
-// 🤖 دالة استدعاء بوت من خزان التحفيز بدقة وتفعيل حماية 5 ثوانٍ
+// 🤖 دالة استدعاء بوت من خزان التحفيز
 function spawnBotFromPool(initialPoints = 10) {
     botCounter++;
     const botId = `bot_pool_${botCounter}`;
@@ -143,7 +143,7 @@ function spawnBotFromPool(initialPoints = 10) {
         changeTimer: Math.floor(Math.random() * 60) + 30,
         radius: radius,
         isProtected: true,
-        protectedUntil: Date.now() + 5000 // 🛡️ غير قابلة للابتلاع لمدة 5 ثوانٍ حتى تأخذ موقعها
+        protectedUntil: Date.now() + 5000
     };
 }
 
@@ -266,7 +266,7 @@ wss.on('connection', async (ws, req) => {
     player.targetX = player.x;
     player.targetY = player.y;
     player.isProtected = true;
-    player.protectedUntil = Date.now() + 5000; // 🛡️ درع حماية عند الدخول لمدة 5 ثوانٍ
+    player.protectedUntil = Date.now() + 5000;
 
     activePlayers[socketId] = player;
 
@@ -297,7 +297,7 @@ wss.on('connection', async (ws, req) => {
                     p.targetX = spawnPos.x;
                     p.targetY = spawnPos.y;
                     p.isProtected = true;
-                    p.protectedUntil = Date.now() + 5000; // 🛡️ حماية لمدة 5 ثوانٍ عند الدخول
+                    p.protectedUntil = Date.now() + 5000;
                     
                     activePlayers[socketId] = p;
                 }
@@ -340,7 +340,7 @@ wss.on('close', () => {
     clearInterval(pingInterval);
 });
 
-// ⚔️ فحص التصادمات وقواعد الابتلاع المباشرة (بدون نسب مئوية)
+// ⚔️ فحص التصادمات وقواعد الابتلاع المباشرة
 function checkCollisions() {
     const players = Object.values(activePlayers);
     const count = players.length;
@@ -353,7 +353,7 @@ function checkCollisions() {
 
             if (!p1 || !p2) continue;
             
-            // 🛑 منع الابتلاع إذا كان أحدهما في فترة الحماية
+            // 🛑 منع الابتلاع أثناء الحماية
             if ((p1.isProtected && now < p1.protectedUntil) || (p2.isProtected && now < p2.protectedUntil)) {
                 continue;
             }
@@ -370,7 +370,6 @@ function checkCollisions() {
             const minOverlapDist = maxRadius * 0.5; 
             
             if (distance < minOverlapDist) {
-                // 🎯 شرط المفترس: الأكبر نقاطاً يبتلع الأصغر مباشرة بدون شروط نسبة 5%
                 if ((p1.points || 0) > (p2.points || 0)) {
                     executeEat(p1, p2);
                 } else if ((p2.points || 0) > (p1.points || 0)) {
@@ -382,21 +381,18 @@ function checkCollisions() {
 }
 
 function executeEat(predator, victim) {
-    const delta = 1; // 🎯 أي ابتلاع يستدعي خسارة نقطة واحدة وربح نقطة للطرف المقابل
+    const delta = 1;
 
-    // 1. زيادة نقاط المفترس +1
     predator.points = (predator.points || 0) + delta;
     predator.radius = calculateRadius(predator.points);
 
-    // 2. تحديث الخزان إذا كان المفترس زائر واستوعب كرة أصغر
     if (isGuestPlayer(predator)) {
-        incentivePool += delta; // 🏆 يملأ الخزان لعب الزوار (+1)
-        checkIncentivePool();   // فحص الوصول لـ 10 نقاط لتوليد بوت جديد
+        incentivePool += delta; 
+        checkIncentivePool();   
     } else if (!predator.isBot) {
         updatePointsSafely(predator.id, delta);
     }
 
-    // 3. خصم نقطة من الضحية (-1)
     victim.points = Math.max(0, (victim.points || 0) - delta);
     victim.radius = calculateRadius(victim.points);
 
@@ -404,7 +400,6 @@ function executeEat(predator, victim) {
         updatePointsSafely(victim.id, -delta);
     }
 
-    // 4. إذا أصبحت نقاط الضحية 0 أو كانت بوت تم ابتلاعه بالكامل
     if (victim.points <= 0 || victim.isBot) {
         if (victim.isBot) {
             delete activePlayers[victim.id];
@@ -442,7 +437,6 @@ setInterval(() => {
     allEntities.forEach(p => {
         const r = p.radius || 60;
 
-        // تحديث حالة الحماية
         if (p.isProtected && now >= p.protectedUntil) {
             p.isProtected = false;
         }
@@ -455,7 +449,6 @@ setInterval(() => {
             let dangerFound = false;
             let targetFound = false;
 
-            // 🧠 ذكاء الاصطناعي الخاص بالبوتات
             for (let other of allEntities) {
                 if (other.id === p.id || other.isBot) continue;
 
