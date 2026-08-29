@@ -24,6 +24,7 @@ if (SUPABASE_URL && SUPABASE_KEY) {
 const PITCH_BOUNDS = { minX: 0, maxX: 140000, minY: 0, maxY: 80000 };
 
 let incentivePool = 0; 
+let incentiveTarget = 10; // القيمة الحالية المطلوبة لإنشاء بوت
 let botCounter = 0;
 
 const STAND_LOCATIONS = {
@@ -172,9 +173,9 @@ function spawnBotFromPool(initialPoints = 10) {
 }
 
 function checkIncentivePool() {
-    while (incentivePool >= 10) {
-        incentivePool -= 10;
-        spawnBotFromPool(10);
+    while (incentivePool >= incentiveTarget) {
+        incentivePool -= incentiveTarget;
+        spawnBotFromPool(incentiveTarget);
     }
 }
 
@@ -341,7 +342,6 @@ wss.on('connection', async (ws, req) => {
                     current.targetY = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, data.y));
                 }
             } else if (data.type === 'ADMIN_ACTION') {
-                // السماح بتمرير المفتاح الممرر بالأمر أو الاعتماد على معرّف الاتصال الإداري
                 if (data.adminKey && data.adminKey !== ADMIN_SECRET) {
                     console.warn(`محاولة تنفيذ أمر إداري بمفتاح غير صحيح من: ${socketId}`);
                     return;
@@ -372,6 +372,14 @@ wss.on('connection', async (ws, req) => {
                             }
                         });
                     }
+                } else if (data.action === 'SET_INCENTIVE_TARGET') {
+                    const newTarget = Math.max(1, parseInt(data.target) || 10);
+                    incentiveTarget = newTarget;
+                    checkIncentivePool();
+                } else if (data.action === 'SET_INCENTIVE_POOL') {
+                    const newPool = Math.max(0, parseInt(data.points) || 0);
+                    incentivePool = newPool;
+                    checkIncentivePool();
                 }
             }
         } catch (e) {
@@ -607,7 +615,8 @@ setInterval(() => {
         activePlayers,
         standLocations: STAND_LOCATIONS,
         standTotals: getStandTotals(),
-        incentivePool: incentivePool
+        incentivePool: incentivePool,
+        incentiveTarget: incentiveTarget
     });
 
     wss.clients.forEach(client => {
