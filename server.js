@@ -21,16 +21,14 @@ if (SUPABASE_URL && SUPABASE_KEY) {
 // 🏛️ أبعاد الساحة الكبرى الفعلية
 const PITCH_BOUNDS = { minX: 0, maxX: 14000, minY: 0, maxY: 8000 };
 
-// 💰 صندوق تحفيز الضعفاء المخزن بالذاكرة
 let incentivePool = 0;
 
-// 🚩 مواضع المدرجات الموزعة بالتساوي وبحدود واضحة على كامل حواف الساحة الخارجية
 const STAND_LOCATIONS = {
-    "SY": { x: 3500,  y: -500,  width: 2500, height: 400, edge: 'TOP' },     // المدرج الشمالي 1 (سوريا)
-    "TR": { x: 10500, y: -500,  width: 2500, height: 400, edge: 'TOP' },     // المدرج الشمالي 2 (تركيا)
-    "SA": { x: 3500,  y: 8500,  width: 2500, height: 400, edge: 'BOTTOM' },  // المدرج الجنوبي 1 (السعودية)
-    "EG": { x: 10500, y: 8500,  width: 2500, height: 400, edge: 'BOTTOM' },  // المدرج الجنوبي 2 (مصر)
-    "AE": { x: 14500, y: 4000,  width: 400,  height: 2500, edge: 'RIGHT' }   // المدرج الشرقي (الإمارات)
+    "SY": { x: 3500,  y: -500,  width: 2500, height: 400, edge: 'TOP' },
+    "TR": { x: 10500, y: -500,  width: 2500, height: 400, edge: 'TOP' },
+    "SA": { x: 3500,  y: 8500,  width: 2500, height: 400, edge: 'BOTTOM' },
+    "EG": { x: 10500, y: 8500,  width: 2500, height: 400, edge: 'BOTTOM' },
+    "AE": { x: 14500, y: 4000,  width: 400,  height: 2500, edge: 'RIGHT' }
 };
 
 const COUNTRY_DATA = {
@@ -47,14 +45,12 @@ let standVault = {};
 const BOT_NAMES = ['Ghost_Hunter', 'Shadow_King', 'Vortex_99', 'Neon_Blade', 'Zeus_BOY', 'Alpha_Wolf', 'Storm_Rider', 'Titan_X', 'Cyber_Samurai', 'Phantom_Lord', 'Odin_King', 'Valkyrie_X', 'Apex_Predator', 'Blaze_Strike', 'Omega_Prime'];
 const COUNTRIES = ['SY', 'SA', 'TR', 'EG', 'AE'];
 
-// ⚽ مضاعفة حجم الكرات
 function calculateRadius(points) {
     const val = Math.max(0, Number(points) || 0);
     const calculatedRadius = 60 + (Math.pow(val, 0.55) * 16);
     return Math.min(1200, Math.max(60, Math.round(calculatedRadius)));
 }
 
-// 🐌 تقليل السرعة لتكون سلسة وثقيلة
 function calculateSpeed(radius, isBot = false) {
     const baseSpeed = Math.max(0.008, 0.025 - (radius / 8000));
     return isBot ? baseSpeed * 0.45 : baseSpeed;
@@ -75,7 +71,6 @@ function isGuestPlayer(player) {
 
 function getRandomOffPitchPosition(countryCode) {
     const stand = STAND_LOCATIONS[countryCode] || STAND_LOCATIONS['SY'];
-    
     const halfW = (stand.width || 2000) / 2;
     const halfH = (stand.height || 400) / 2;
 
@@ -85,11 +80,13 @@ function getRandomOffPitchPosition(countryCode) {
     };
 }
 
+// 🎯 التأكد الجذري من توليد الكرات داخل الحدود مع مراعاة نصف القطر
 function getRandomOnPitchPosition(radius) {
-    const minX = PITCH_BOUNDS.minX + radius;
-    const maxX = PITCH_BOUNDS.maxX - radius;
-    const minY = PITCH_BOUNDS.minY + radius;
-    const maxY = PITCH_BOUNDS.maxY - radius;
+    const r = radius || 60;
+    const minX = PITCH_BOUNDS.minX + r;
+    const maxX = PITCH_BOUNDS.maxX - r;
+    const minY = PITCH_BOUNDS.minY + r;
+    const maxY = PITCH_BOUNDS.maxY - r;
 
     return {
         x: Math.floor(Math.random() * (maxX - minX)) + minX,
@@ -121,7 +118,6 @@ function spawnBot(botId) {
     };
 }
 
-// 🤖 إطلاق 18 بوت
 for (let i = 1; i <= 18; i++) {
     spawnBot(`bot_${i}`);
 }
@@ -267,6 +263,7 @@ wss.on('connection', async (ws, req) => {
             } else if (data.type === 'TARGET') {
                 const current = activePlayers[socketId];
                 if (current && typeof data.x === 'number' && typeof data.y === 'number') {
+                    // 🔒 تقييد الهدف داخل أبعاد الملعب تماماً
                     const r = current.radius || 60;
                     current.targetX = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, data.x));
                     current.targetY = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, data.y));
@@ -318,20 +315,17 @@ function checkCollisions() {
             const dy = p2.y - p1.y;
             const distance = Math.hypot(dx, dy) || 1;
 
-            // 🎯 تم تعديل شرط المسافة للتلامس الطبيعي (0.75 من نصف القطر الأكبر)
             const maxRadius = Math.max(p1.radius, p2.radius);
             if (distance < maxRadius * 0.75) {
                 const p1Guest = isGuestPlayer(p1);
                 const p2Guest = isGuestPlayer(p2);
 
-                // 🌟 الزائر يبتلع أي لاعب/بوت فوراً
                 if (p1Guest && !p2Guest) {
                     executeEat(p1, p2);
                 } 
                 else if (p2Guest && !p1Guest) {
                     executeEat(p2, p1);
                 }
-                // ⚔️ الابتلاع العادي: الكرة الأكبر حجماً تبتلع الأصغر فوراً
                 else if (p1.radius > p2.radius) {
                     executeEat(p1, p2);
                 } 
@@ -433,9 +427,10 @@ setInterval(() => {
                 p.y += dy * speedFactor;
             }
 
+            // 🛑 حظر مطلق وصارم: إجبار الإحداثيات المحدثة على عدم التجاوز خارج حدود المضمار مطلقاً
             const r = p.radius || 60;
             p.x = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, p.x));
-            p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxX - r, p.y));
+            p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, p.y));
         }
     });
 
