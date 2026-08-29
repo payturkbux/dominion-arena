@@ -21,7 +21,7 @@ if (SUPABASE_URL && SUPABASE_KEY) {
 // 🏛️ أبعاد الساحة الكبرى الفعلية
 const PITCH_BOUNDS = { minX: 0, maxX: 14000, minY: 0, maxY: 8000 };
 
-let incentivePool = 100; // قيمة ابتدائية لصندوق التحفيز
+let incentivePool = 100;
 
 const STAND_LOCATIONS = {
     "SY": { x: 3500,  y: -500,  width: 2500, height: 400, edge: 'TOP' },
@@ -116,13 +116,14 @@ function getStandTotals() {
     return totals;
 }
 
-// 🤖 إنشاء البوتات الابتدائية بحجم ثابت ومستقر
+// 🤖 إنشاء البوتات الابتدائية بنظام متجهات سلس
 function spawnBot(botId, initialPoints = 50) {
     const randomName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
     const randomCountry = COUNTRIES[Math.floor(Math.random() * COUNTRIES.length)];
     
     const radius = calculateRadius(initialPoints);
     const pos = getRandomOnPitchPosition(radius);
+    const initialAngle = Math.random() * Math.PI * 2;
 
     activePlayers[botId] = {
         id: botId,
@@ -134,7 +135,8 @@ function spawnBot(botId, initialPoints = 50) {
         country: getCountryInfo(randomCountry),
         x: pos.x,
         y: pos.y,
-        angle: Math.random() * Math.PI * 2,
+        vx: Math.cos(initialAngle),
+        vy: Math.sin(initialAngle),
         changeTimer: Math.floor(Math.random() * 60) + 30,
         radius: radius
     };
@@ -325,7 +327,7 @@ wss.on('close', () => {
     clearInterval(pingInterval);
 });
 
-// ⚔️ فحص التصادمات وقواعد الابتلاع
+// ⚔️ فحص التصادمات وقواعد الابتلاع (منع البوتات من التهام بعضها)
 function checkCollisions() {
     const players = Object.values(activePlayers);
     const count = players.length;
@@ -336,6 +338,9 @@ function checkCollisions() {
             const p2 = players[j];
 
             if (!p1 || !p2) continue;
+            
+            // 🛑 منع البوتات من أكل بعضها نهائياً
+            if (p1.isBot && p2.isBot) continue;
 
             const dx = p2.x - p1.x;
             const dy = p2.y - p1.y;
@@ -344,7 +349,6 @@ function checkCollisions() {
             const minOverlapDist = Math.max(p1.radius, p2.radius) * 0.75;
             
             if (distance < minOverlapDist) {
-                // شرط الابتلاع: الأكبر حجماً يبتلع الأصغر فقط (فارق 5%)
                 if (p1.radius > p2.radius * 1.05) {
                     executeEat(p1, p2);
                 } else if (p2.radius > p1.radius * 1.05) {
@@ -356,9 +360,8 @@ function checkCollisions() {
 }
 
 function executeEat(predator, victim) {
-    const pointDelta = 1; // زيادة نقطة واحدة للقاتل وخسارة نقطة واحدة للضحية
+    const pointDelta = 1;
 
-    // 1. تحديث نقاط المفترس
     if (predator.isBot) {
         predator.eatenPool = (predator.eatenPool || 0) + 1;
         predator.points += pointDelta;
@@ -372,7 +375,6 @@ function executeEat(predator, victim) {
         updatePointsSafely(predator.id, pointDelta);
     }
 
-    // 2. تحديث نقاط الضحية وإزالته إلى المدرجات
     if (victim.isBot) {
         const botId = victim.id;
         delete activePlayers[botId];
@@ -408,39 +410,84 @@ function executeEat(predator, victim) {
 
 // 🎯 حلقة التحديث الرئيسية (30 FPS)
 setInterval(() => {
-    Object.values(activePlayers).forEach(p => {
+    const allEntities = Object.values(activePlayers);
+
+    allEntities.forEach(p => {
         const r = p.radius || 60;
 
         if (p.isBot) {
-            p.changeTimer--;
-            if (p.changeTimer <= 0) {
-                p.angle += (Math.random() - 0.5) * 0.8; 
-                p.changeTimer = Math.floor(Math.random() * 40) + 20;
+            let fleeX = 0;
+            let fleeY = 0;
+            let dangerFound = false;
+
+            // 1. البحث عن اللاعبين البشر الأكثر حجماً للهروب منهم سلسياً
+            for (let other of allEntities) {
+                if (other.id === p.id || other.isBot) continue; // تجاهل البوتات الأخرى
+
+                if (other.radius > p.radius * 1.05) {
+                    const dx = p.x - other.x;
+                    const dy = p.y - other.y;
+                    const dist = Math.hypot(dx, dy);
+                    const safeDistance = p.radius + other.radius + 400; // مسافة الأمان
+
+                    if (dist < safeDistance && dist > 0) {
+                        dangerFound = true;
+                        const force = (safeDistance - dist) / safeDistance;
+                        fleeX += (dx / dist) * force;
+                        fleeY += (dy / dist) * force;
+                    }
+                }
             }
 
-            const botSpeed = getBotMoveSpeed(r);
-            p.x += Math.cos(p.angle) * botSpeed;
-            p.y += Math.sin(p.angle) * botSpeed;
+            // 2. تحديث متجهات الحركة بناءً على حالة الخطر أو الحركة العشوائية السلسة
+            if (dangerFound) {
+                const len = Math.hypot(fleeX, fleeY) || 1;
+                p.vx = (p.vx * 0.7) + ((fleeX / len) * 0.3);
+                p.vy = (p.vy * 0.7) + ((fleeY / len) * 0.3);
+            } else {
+                p.changeTimer--;
+                if (p.changeTimer <= 0) {
+                    const randomAngle = Math.random() * Math.PI * 2;
+                    p.targetVx = Math.cos(randomAngle);
+                    p.targetVy = Math.sin(randomAngle);
+                    p.changeTimer = Math.floor(Math.random() * 90) + 40;
+                }
+                if (p.targetVx !== undefined) {
+                    p.vx = (p.vx * 0.95) + (p.targetVx * 0.05);
+                    p.vy = (p.vy * 0.95) + (p.targetVy * 0.05);
+                }
+            }
 
+            // تطبيع المتجه للمحافظة على سرعة ثابتة وسلسة
+            const moveLen = Math.hypot(p.vx, p.vy) || 1;
+            p.vx /= moveLen;
+            p.vy /= moveLen;
+
+            const botSpeed = getBotMoveSpeed(r);
+            p.x += p.vx * botSpeed;
+            p.y += p.vy * botSpeed;
+
+            // الارتداد الناعم من جدران الملعب
             if (p.x <= PITCH_BOUNDS.minX + r) {
                 p.x = PITCH_BOUNDS.minX + r;
-                p.angle = Math.PI - p.angle;
+                p.vx = Math.abs(p.vx);
             } else if (p.x >= PITCH_BOUNDS.maxX - r) {
                 p.x = PITCH_BOUNDS.maxX - r;
-                p.angle = Math.PI - p.angle;
+                p.vx = -Math.abs(p.vx);
             }
 
             if (p.y <= PITCH_BOUNDS.minY + r) {
                 p.y = PITCH_BOUNDS.minY + r;
-                p.angle = -p.angle;
+                p.vy = Math.abs(p.vy);
             } else if (p.y >= PITCH_BOUNDS.maxY - r) {
                 p.y = PITCH_BOUNDS.maxY - r;
-                p.angle = -p.angle;
+                p.vy = -Math.abs(p.vy);
             }
 
             p.targetX = p.x;
             p.targetY = p.y;
         } else {
+            // حركة اللاعب الحقيقي
             if (typeof p.targetX === 'number' && typeof p.targetY === 'number') {
                 const dx = p.targetX - p.x;
                 const dy = p.targetY - p.y;

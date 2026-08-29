@@ -26,25 +26,21 @@
             -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.12);
         }
-        @keyframes slideIn {
-            from { transform: translateY(-20px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
+        
+        /* ⚡ تأثير الومضة للرسالة */
+        @keyframes flashPop {
+            0% { transform: translate(-50%, -20px) scale(0.8); opacity: 0; }
+            15% { transform: translate(-50%, 0) scale(1.05); opacity: 1; }
+            25% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+            80% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -10px) scale(0.9); opacity: 0; }
         }
-        .toast-animate { animation: slideIn 0.25s ease-out forwards; }
+        .flash-toast {
+            animation: flashPop 2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
         .sidebar-transition {
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease;
-        }
-        /* 📜 تخصيص شريط التمرير لصندوق الرسائل الموحد */
-        #toastContainer::-webkit-scrollbar {
-            width: 4px;
-        }
-        #toastContainer::-webkit-scrollbar-track {
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 4px;
-        }
-        #toastContainer::-webkit-scrollbar-thumb {
-            background: rgba(0, 245, 255, 0.4);
-            border-radius: 4px;
         }
     </style>
 </head>
@@ -71,8 +67,8 @@
         </div>
     </div>
 
-    <!-- 📩 صندوق الرسائل والتنبيهات الموحد (محدد الحجم وبشريط تمرير داخلي لا يغلق الشاشة) -->
-    <div id="toastContainer" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 w-11/12 max-w-sm max-h-48 sm:max-h-64 overflow-y-auto pointer-events-auto p-1 scroll-smooth"></div>
+    <!-- ⚡ حاوية رسائل الومضة الموحدة -->
+    <div id="toastContainer" class="fixed top-20 left-1/2 z-50 pointer-events-none flex flex-col items-center gap-2 w-full max-w-md px-4"></div>
 
     <div id="respawnOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
         <div class="glass-hud p-8 rounded-3xl w-full max-w-md border border-red-500/50 text-center shadow-2xl space-y-5">
@@ -160,26 +156,31 @@
         console.error("Supabase Init Error:", e);
     }
 
-    // 📩 دالة التنبيهات المعدلة: تدرج الرسائل متتالية داخل صندوق ثابت
+    // ⚡ دالة الرسالة الشفافة الومضة (تظهر في المنتصف وتختفي تلقائياً)
     function showNotification(message, type = 'error') {
         const container = document.getElementById('toastContainer');
         if (!container) return;
 
-        const toast = document.createElement('div');
-        const bgColor = type === 'error' ? 'bg-red-900/90 border-red-500/50 text-red-200' : 'bg-emerald-900/90 border-emerald-500/50 text-emerald-200';
-        const icon = type === 'error' ? '⚠️' : '✅';
+        // إزالة أي رسالة ومضة سابقة على الفور لضمان بقاء الشاشة نظيفة
+        container.innerHTML = '';
 
-        toast.className = `toast-animate glass-hud px-3.5 py-2 rounded-xl border text-xs font-bold shadow-xl flex items-center gap-2 ${bgColor} shrink-0`;
-        toast.innerHTML = `<span>${icon}</span> <span class="leading-snug">${message}</span>`;
+        const toast = document.createElement('div');
+        const bgColor = type === 'error' 
+            ? 'bg-red-950/80 border-red-500/60 text-red-200 shadow-red-500/20' 
+            : 'bg-emerald-950/80 border-emerald-500/60 text-emerald-200 shadow-emerald-500/20';
+        const icon = type === 'error' ? '⚡' : '✨';
+
+        toast.className = `flash-toast fixed left-1/2 glass-hud px-5 py-2.5 rounded-2xl border text-xs sm:text-sm font-black shadow-2xl flex items-center justify-center gap-2 ${bgColor} whitespace-nowrap`;
+        toast.innerHTML = `<span class="text-base">${icon}</span> <span class="leading-none">${message}</span>`;
         
         container.appendChild(toast);
-        container.scrollTop = container.scrollHeight; // التمرير التلقائي لأحدث رسالة
 
+        // إزالة العنصر من المخطط بعد إتمام انيميشن الومضة (2 ثانية)
         setTimeout(() => {
-            toast.style.opacity = '0';
-            toast.style.transition = 'opacity 0.4s ease';
-            setTimeout(() => toast.remove(), 400);
-        }, 4000);
+            if (toast && toast.parentNode) {
+                toast.remove();
+            }
+        }, 2000);
     }
 
     let sidebarOpen = true;
@@ -222,14 +223,13 @@
     let activePlayers = {};
     let standVault = {};
     let standLocations = {};
-    let standTotals = {}; // 📊 كائن استقبال أرصدة المدرجات الإجمالية من السيرفر
+    let standTotals = {}; 
     let localTargetPos = { x: centerX, y: centerY };
 
     let currentUserProfile = null;
     let selectedCountryCode = 'SY'; 
     let currentUserId = localStorage.getItem('dominion_user_id') || `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
 
-    // 🎯 معادلة السيرفر الموحدة لحساب نصف القطر
     function calculateRadius(points) {
         const val = Math.max(0, Number(points) || 0);
         const calculatedRadius = 60 + (Math.pow(val, 0.55) * 16);
@@ -382,7 +382,6 @@
         document.getElementById('respawnOverlay').classList.add('hidden');
     }
 
-    // ⚡ إدارة قوانين الابتلاع المخصصة (الزائر ضد المستخدم / مستخدم ضد صديقه)
     function processEatenLogic(eater, eaten) {
         const stolenPoints = Number(eaten.points || 0);
 
@@ -391,7 +390,7 @@
             eater.points += stolenPoints;
             eater.radius = calculateRadius(eater.points);
 
-            showNotification(`الزائر ابتلع ${eaten.name}! تمت إضافة ${stolenPoints}$ وتمرير 50% (${incentiveBonus}$) لصندوق تحفيز الضعفاء!`, "success");
+            showNotification(`الزائر ابتلع ${eaten.name}! (+${stolenPoints}$)`, "success");
 
             let realUsers = Object.values(activePlayers).filter(p => !isGuestPlayer(p) && p.id !== eaten.id);
             realUsers.sort((a, b) => a.points - b.points);
@@ -407,7 +406,7 @@
             eater.points += stolenPoints;
             eater.radius = calculateRadius(eater.points);
 
-            showNotification(`المستخدم ${eater.name} ابتلع صديقه ${eaten.name}! انتقلت +${stolenPoints}$ له مباشرة!`, "error");
+            showNotification(`${eater.name} ابتلع ${eaten.name}! (+${stolenPoints}$)`, "error");
         }
 
         if (eaten.id === currentUserId) {
@@ -534,7 +533,6 @@
         setupWebSocket();
     }
 
-    // 🔍 تحكم بالزوم عن طريق عجلة الماوس
     window.addEventListener('wheel', (e) => {
         if (e.target.closest('#toastContainer, #leaderboardSidebar, #loginModal, #countrySelectModal, #respawnOverlay')) return;
         e.preventDefault();
@@ -542,7 +540,6 @@
         camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, camera.targetZoom * zoomFactor));
     }, { passive: false });
 
-    // 📱 دعم التكبير والتصغير (Pinch-to-Zoom) على شاشة اللمس
     let touchStartDist = 0;
     window.addEventListener('touchstart', (e) => {
         if (e.touches.length === 2) {
