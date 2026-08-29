@@ -14,7 +14,7 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
-            touch-action: none;
+            touch-action: pan-x pan-y;
             -webkit-user-select: none;
             user-select: none;
             font-family: 'Tajawal', sans-serif;
@@ -40,7 +40,6 @@
 
     <div id="toastContainer" class="fixed top-20 left-1/2 -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
-    <!-- شاشة إعادة النزول عند الابتلاع -->
     <div id="respawnOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
         <div class="glass-hud p-8 rounded-3xl w-full max-w-md border border-red-500/50 text-center shadow-2xl space-y-5 animate-bounce-short">
             <div class="text-6xl">💥</div>
@@ -52,16 +51,14 @@
         </div>
     </div>
 
-    <!-- الهيدر الرئيسي -->
     <header class="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 glass-hud px-4 py-2 rounded-2xl shadow-2xl border border-cyan-500/30 max-w-[90vw]">
         <span class="text-xl">⚔️</span>
         <div class="truncate">
-            <div id="hudStatusTitle" class="text-[9px] sm:text-[10px] uppercase text-cyan-400 font-bold tracking-widest truncate">ميدان التفاعل الحي (طولي)</div>
-            <div id="hudActionTip" class="text-[11px] font-bold text-emerald-400 truncate">المس الشاشة لتوجيه كرتك</div>
+            <div id="hudStatusTitle" class="text-[9px] sm:text-[10px] uppercase text-cyan-400 font-bold tracking-widest truncate">الساحة الكبرى - ميدان التفاعل الحي</div>
+            <div id="hudActionTip" class="text-[11px] font-bold text-emerald-400 truncate">المس الشاشة أو حرّك الماوس للتوجيه داخل الحدود</div>
         </div>
     </header>
 
-    <!-- أزرار الدخول والخروج -->
     <div class="absolute top-4 left-4 z-30 flex gap-2">
         <button id="authBtn" onclick="openLoginModal()" class="glass-hud px-3 py-2 rounded-xl flex items-center gap-1.5 border border-cyan-500/40 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition shadow-2xl">
             <span id="authBtnIcon">🔑</span>
@@ -72,14 +69,12 @@
         </button>
     </div>
 
-    <!-- زر إخفاء / إظهار قائمة المتصدرين للجوال -->
     <div class="absolute top-4 right-4 z-40">
         <button id="toggleSidebarBtn" onclick="toggleSidebar()" class="glass-hud p-2.5 rounded-xl border border-amber-500/40 text-amber-400 hover:bg-amber-500/20 active:scale-95 transition shadow-2xl flex items-center justify-center">
             <span id="toggleSidebarIcon" class="text-base">🏆</span>
         </button>
     </div>
 
-    <!-- نافذة تسجيل الدخول -->
     <div id="loginModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
         <div class="glass-hud p-6 rounded-3xl w-full max-w-sm border border-cyan-500/40 text-center shadow-2xl space-y-4">
             <div class="text-4xl">⚽</div>
@@ -103,7 +98,6 @@
         </div>
     </div>
 
-    <!-- قائمة المتصدرين (قابلة للإخفاء) -->
     <aside id="leaderboardSidebar" class="sidebar-transition absolute top-16 right-4 z-30 glass-hud p-4 rounded-2xl w-72 sm:w-80 border border-amber-500/30 shadow-2xl transform translate-x-0 opacity-100">
         <div class="flex items-center justify-between mb-3 pb-2 border-b border-white/10">
             <div class="flex items-center gap-2">
@@ -149,7 +143,6 @@
         }, 4000);
     }
 
-    // إخفاء وإظهار قائمة المتصدرين
     let sidebarOpen = true;
     function toggleSidebar() {
         const sidebar = document.getElementById('leaderboardSidebar');
@@ -178,10 +171,14 @@
     window.addEventListener('resize', resize);
     resize();
 
-    // 📱 أبعاد الساحة الطولية (Vertical Pitch Bounds)
-    const PITCH_BOUNDS = { minX: 1000, maxX: 3200, minY: 500, maxY: 5700 };
+    // 🏟️ الأبعاد الجديدة والمكبرة للساحة (عرضية)
+    const PITCH_BOUNDS = { minX: 500, maxX: 8500, minY: 1000, maxY: 6000 };
 
-    let camera = { x: 2100, y: 3100, zoom: 0.35, targetZoom: 0.35 };
+    // نقطة المنتصف الجديدة
+    const centerX = (PITCH_BOUNDS.maxX + PITCH_BOUNDS.minX) / 2;
+    const centerY = (PITCH_BOUNDS.maxY + PITCH_BOUNDS.minY) / 2;
+
+    let camera = { x: centerX, y: centerY, zoom: 0.25, targetZoom: 0.25 };
     const MIN_ZOOM = 0.15;
     const MAX_ZOOM = 1.20;
 
@@ -193,7 +190,7 @@
     function calculateRadius(points) {
         const val = Math.max(0, Number(points) || 0);
         const calculatedRadius = 30 + Math.pow(val / 10, 0.55);
-        return Math.min(600, Math.max(30, calculatedRadius));
+        return Math.min(800, Math.max(30, calculatedRadius));
     }
 
     const monumentImages = {};
@@ -213,7 +210,6 @@
 
     function setupWebSocket() {
         if (socket) socket.close();
-
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}?userId=${currentUserId}`;
         
@@ -224,7 +220,6 @@
         socket.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
-
                 if (data.type === 'INIT') {
                     currentUserId = data.selfId;
                 } else if (data.type === 'SYNC') {
@@ -364,11 +359,14 @@
     function handlePointerMove(clientX, clientY) {
         const worldPos = getWorldCoordinates(clientX, clientY);
 
+        const clampedX = Math.max(PITCH_BOUNDS.minX, Math.min(PITCH_BOUNDS.maxX, worldPos.x));
+        const clampedY = Math.max(PITCH_BOUNDS.minY, Math.min(PITCH_BOUNDS.maxY, worldPos.y));
+
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({
                 type: 'TARGET',
-                x: worldPos.x,
-                y: worldPos.y
+                x: clampedX,
+                y: clampedY
             }));
         }
     }
@@ -378,19 +376,42 @@
         handlePointerMove(e.clientX, e.clientY);
     });
 
-    window.addEventListener('touchmove', (e) => {
-        if (e.touches && e.touches.length > 0) {
+    // 📱 منطق التحكم باللمس وزوم الأصبعين
+    let initialPinchDistance = null;
+    let initialTargetZoom = camera.targetZoom;
+
+    function getPinchDistance(touches) {
+        const dx = touches[0].clientX - touches[1].clientX;
+        const dy = touches[0].clientY - touches[1].clientY;
+        return Math.hypot(dx, dy);
+    }
+
+    window.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            initialPinchDistance = getPinchDistance(e.touches);
+            initialTargetZoom = camera.targetZoom;
+        } else if (e.touches.length === 1) {
             if (e.touches[0].target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay')) return;
             handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
         }
     }, { passive: true });
 
-    window.addEventListener('touchstart', (e) => {
-        if (e.touches && e.touches.length > 0) {
+    window.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2 && initialPinchDistance) {
+            const currentDistance = getPinchDistance(e.touches);
+            const zoomFactor = currentDistance / initialPinchDistance;
+            camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, initialTargetZoom * zoomFactor));
+        } else if (e.touches.length === 1) {
             if (e.touches[0].target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay')) return;
             handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
         }
     }, { passive: true });
+
+    window.addEventListener('touchend', (e) => {
+        if (e.touches.length < 2) {
+            initialPinchDistance = null;
+        }
+    });
 
     function updateLeaderboard() {
         const listEl = document.getElementById('leaderboardList');
@@ -420,45 +441,43 @@
         }).join('');
     }
 
-    // 🏟️ رسم الساحة المحدّثة بالطول (Vertical Pitch)
+    // 🏟️ رسم الساحة العرضية المكبرة
     function drawStadiumPitch() {
         ctx.fillStyle = "#0c1220";
-        ctx.fillRect(-3000, -3000, 10000, 12000);
+        ctx.fillRect(-2000, -2000, 13000, 11000);
 
-        // خلفية إضاءة طولية
-        let lightGrad = ctx.createRadialGradient(2100, 3100, 500, 2100, 3100, 4500);
+        let lightGrad = ctx.createRadialGradient(centerX, centerY, 1000, centerX, centerY, 7000);
         lightGrad.addColorStop(0, "rgba(0, 245, 255, 0.12)");
         lightGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
         ctx.fillStyle = lightGrad;
-        ctx.fillRect(-3000, -3000, 10000, 12000);
+        ctx.fillRect(-2000, -2000, 13000, 11000);
 
-        // العشب الطولي (2200px × 5200px)
-        let turfGrad = ctx.createLinearGradient(1000, 0, 3200, 0);
+        let pitchWidth = PITCH_BOUNDS.maxX - PITCH_BOUNDS.minX;
+        let pitchHeight = PITCH_BOUNDS.maxY - PITCH_BOUNDS.minY;
+
+        let turfGrad = ctx.createLinearGradient(0, PITCH_BOUNDS.minY, 0, PITCH_BOUNDS.maxY);
         turfGrad.addColorStop(0, "#0a3320");
         turfGrad.addColorStop(0.5, "#0e442b");
         turfGrad.addColorStop(1, "#0a3320");
         ctx.fillStyle = turfGrad;
-        ctx.fillRect(1000, 500, 2200, 5200);
+        ctx.fillRect(PITCH_BOUNDS.minX, PITCH_BOUNDS.minY, pitchWidth, pitchHeight);
 
-        // تقليمات العشب الأفقي
         ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
-        for (let y = 500; y < 5700; y += 300) {
-            ctx.fillRect(1000, y, 2200, 150);
+        for (let x = PITCH_BOUNDS.minX; x < PITCH_BOUNDS.maxX; x += 400) {
+            ctx.fillRect(x, PITCH_BOUNDS.minY, 200, pitchHeight);
         }
 
-        // إطار الملعب الطولي النيوني
         ctx.strokeStyle = "#00f5ff";
-        ctx.lineWidth = 14;
-        ctx.shadowBlur = 30;
+        ctx.lineWidth = 20;
+        ctx.shadowBlur = 40;
         ctx.shadowColor = "#00f5ff";
-        ctx.strokeRect(1000, 500, 2200, 5200);
+        ctx.strokeRect(PITCH_BOUNDS.minX, PITCH_BOUNDS.minY, pitchWidth, pitchHeight);
         ctx.shadowBlur = 0;
 
-        // خط المنتصف ومناطق المرمى (أفقي في الساحة الطولية)
         ctx.strokeStyle = "rgba(255, 255, 255, 0.6)";
-        ctx.lineWidth = 10;
-        ctx.beginPath(); ctx.moveTo(1000, 3100); ctx.lineTo(3200, 3100); ctx.stroke();
-        ctx.beginPath(); ctx.arc(2100, 3100, 350, 0, Math.PI * 2); ctx.stroke();
+        ctx.lineWidth = 14;
+        ctx.beginPath(); ctx.moveTo(centerX, PITCH_BOUNDS.minY); ctx.lineTo(centerX, PITCH_BOUNDS.maxY); ctx.stroke();
+        ctx.beginPath(); ctx.arc(centerX, centerY, 600, 0, Math.PI * 2); ctx.stroke();
     }
 
     function drawOrb(p) {
@@ -486,7 +505,7 @@
         ctx.fillStyle = glassGrad;
         ctx.beginPath(); ctx.arc(0, 0, radius, 0, Math.PI * 2); ctx.fill();
 
-        ctx.lineWidth = 4;
+        ctx.lineWidth = Math.max(4, radius * 0.05);
         ctx.strokeStyle = (p.id === currentUserId) ? "#ffd700" : themeColor;
         ctx.stroke();
 
@@ -494,7 +513,7 @@
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         
-        const fontSize = Math.max(12, radius * 0.3);
+        const fontSize = Math.max(14, radius * 0.3);
         ctx.font = `bold ${fontSize}px 'Tajawal'`;
         
         const flag = p.country?.flag || '';
