@@ -31,14 +31,13 @@ let activePlayers = {};
 let standVault = {};    
 
 function calculateRadius(points) {
-    const base = 35;
     const val = Math.max(0, Number(points) || 0);
-    const dynamicSize = Math.log10(val + 1) * 15;
-    return Math.min(120, Math.max(base, base + dynamicSize));
+    const calculatedRadius = 30 + Math.pow(val / 10, 0.55);
+    return Math.min(600, Math.max(30, calculatedRadius));
 }
 
 function calculateSpeed(radius) {
-    return Math.max(0.05, 0.25 - (radius / 500));
+    return Math.max(0.02, 0.22 - (radius / 1200));
 }
 
 function getCountryFlag(code) {
@@ -79,17 +78,64 @@ async function loadOfflinePlayersToStands() {
     }
 }
 
-async function syncUserPointsToDB(userId, newPoints) {
+async function updatePointsSafely(userId, delta) {
     if (!supabase || !userId || userId.startsWith('guest_')) return;
     try {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('points_balance')
+            .eq('id', userId)
+            .single();
+
+        if (error || !data) return;
+
+        const currentDbBalance = Number(data.points_balance || 0);
+        const newBalance = Math.max(0, currentDbBalance + delta);
+
         await supabase
             .from('profiles')
-            .update({ points_balance: newPoints })
+            .update({ points_balance: newBalance })
             .eq('id', userId);
+
+        if (activePlayers[userId]) {
+            activePlayers[userId].points = newBalance;
+            activePlayers[userId].radius = calculateRadius(newBalance);
+        } else if (standVault[userId]) {
+            standVault[userId].points = newBalance;
+            standVault[userId].radius = calculateRadius(newBalance);
+        }
     } catch (e) {
-        console.error("فشل تحديث قاعدة البيانات:", e);
+        console.error("فشل التحديث الآمن لقاعدة البيانات:", e);
     }
 }
+
+// مزامنة حية خلفية كل 5 ثواني لرصد الإيداعات
+setInterval(async () => {
+    if (!supabase) return;
+    const activeIds = Object.keys(activePlayers).filter(id => !id.startsWith('guest_'));
+    if (activeIds.length === 0) return;
+
+    try {
+        const { data, error } = await supabase
+            .from('profiles')
+            .select('id, points_balance')
+            .in('id', activeIds.slice(0, 500));
+
+        if (data && !error) {
+            data.forEach(user => {
+                if (activePlayers[user.id]) {
+                    const realBalance = Number(user.points_balance || 0);
+                    if (activePlayers[user.id].points !== realBalance) {
+                        activePlayers[user.id].points = realBalance;
+                        activePlayers[user.id].radius = calculateRadius(realBalance);
+                    }
+                }
+            });
+        }
+    } catch (err) {
+        console.error("خطأ المزامنة الحية للأرصدة:", err);
+    }
+}, 5000);
 
 loadOfflinePlayersToStands();
 
@@ -156,7 +202,7 @@ wss.on('connection', async (ws, req) => {
             } else if (data.type === 'TARGET') {
                 const current = activePlayers[socketId];
                 if (current && typeof data.x === 'number' && typeof data.y === 'number') {
-                    const r = current.radius || 35;
+                    const r = current.radius || 30;
                     current.targetX = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, data.x));
                     current.targetY = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, data.y));
                 }
@@ -180,7 +226,7 @@ wss.on('connection', async (ws, req) => {
     });
 });
 
-// معالجة الابتلاع والارتداد عند التصادم
+// 🎯 فحص الابتلاع بدون أي ارتداد أو تنافر
 function checkCollisions() {
     const players = Object.values(activePlayers);
     
@@ -194,35 +240,14 @@ function checkCollisions() {
             const dx = p2.x - p1.x;
             const dy = p2.y - p1.y;
             const distance = Math.hypot(dx, dy) || 1;
-            const minDistance = p1.radius + p2.radius;
 
-            if (distance < minDistance) {
-                // 1. حالة الابتلاع: كرة p1 أكبر بـ 1.15 ضعف وتغطي مركز p2
-                if (p1.radius > p2.radius * 1.15 && distance < p1.radius) {
-                    executeEat(p1, p2);
-                } 
-                // 2. حالة الابتلاع العكسي: كرة p2 أكبر بـ 1.15 ضعف وتغطي مركز p1
-                else if (p2.radius > p1.radius * 1.15 && distance < p2.radius) {
-                    executeEat(p2, p1);
-                } 
-                // 3. حالة التصادم والارتداد الفيزيائي للأحجام المتقاربة
-                else {
-                    const overlap = minDistance - distance;
-                    const nx = dx / distance;
-                    const ny = dy / distance;
-
-                    p1.x -= nx * (overlap / 2);
-                    p1.y -= ny * (overlap / 2);
-                    p2.x += nx * (overlap / 2);
-                    p2.y += ny * (overlap / 2);
-
-                    const r1 = p1.radius || 35;
-                    const r2 = p2.radius || 35;
-                    p1.x = Math.max(PITCH_BOUNDS.minX + r1, Math.min(PITCH_BOUNDS.maxX - r1, p1.x));
-                    p1.y = Math.max(PITCH_BOUNDS.minY + r1, Math.min(PITCH_BOUNDS.maxY - r1, p1.y));
-                    p2.x = Math.max(PITCH_BOUNDS.minX + r2, Math.min(PITCH_BOUNDS.maxX - r2, p2.x));
-                    p2.y = Math.max(PITCH_BOUNDS.minY + r2, Math.min(PITCH_BOUNDS.maxY - r2, p2.y));
-                }
+            // 1. فحص هل p1 يبتلع p2 (إذا كان أسرع/أكبر ولو بفارق بسيط، وتداخل مركز الكرة)
+            if (p1.radius > p2.radius * 1.01 && distance < p1.radius) {
+                executeEat(p1, p2);
+            } 
+            // 2. فحص العكس: هل p2 يبتلع p1
+            else if (p2.radius > p1.radius * 1.01 && distance < p2.radius) {
+                executeEat(p2, p1);
             }
         }
     }
@@ -231,11 +256,11 @@ function checkCollisions() {
 function executeEat(predator, victim) {
     predator.points += 1;
     predator.radius = calculateRadius(predator.points);
-    syncUserPointsToDB(predator.id, predator.points);
-
     victim.points = Math.max(0, victim.points - 1);
     victim.radius = calculateRadius(victim.points);
-    syncUserPointsToDB(victim.id, victim.points);
+
+    updatePointsSafely(predator.id, 1);
+    updatePointsSafely(victim.id, -1);
 
     delete activePlayers[victim.id];
     victim.inStand = true;
@@ -291,4 +316,4 @@ setInterval(() => {
 }, 1000 / 30);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🚀 Agario Arena Server with Full Physics running on port ${PORT}`));
+server.listen(PORT, () => console.log(`🚀 Agario Server Instant Eating Logic running on port ${PORT}`));
