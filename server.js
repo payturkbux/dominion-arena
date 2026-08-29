@@ -191,7 +191,6 @@ async function loadOfflinePlayersToStands() {
 async function updatePointsSafely(userId, delta) {
     if (!supabase || !userId || userId.startsWith('guest_') || userId.startsWith('bot_')) return;
     
-    // 1. تحديث الذاكرة المحلية فوراً لضمان سرعة الاستجابة في الرسوميات
     if (activePlayers[userId]) {
         activePlayers[userId].points = Math.max(0, (activePlayers[userId].points || 0) + delta);
         activePlayers[userId].radius = calculateRadius(activePlayers[userId].points);
@@ -200,7 +199,6 @@ async function updatePointsSafely(userId, delta) {
         standVault[userId].radius = calculateRadius(standVault[userId].points);
     }
 
-    // 2. التحديث الذري المستقر في Supabase
     try {
         const { error } = await supabase.rpc('change_user_points', {
             user_id: userId,
@@ -258,6 +256,7 @@ wss.on('connection', async (ws, req) => {
 
     delete standVault[socketId];
     player.inStand = false;
+    player.isBot = false; // تأكيد صريح أن الزائر لاعب حقيقي
     player.targetX = player.x;
     player.targetY = player.y;
     player.isProtected = true;
@@ -348,19 +347,16 @@ function checkCollisions() {
 
             if (!p1 || !p2) continue;
             
-            // 🛑 منع الابتلاع أثناء الحماية
             if ((p1.isProtected && now < p1.protectedUntil) || (p2.isProtected && now < p2.protectedUntil)) {
                 continue;
             }
 
-            // 🛑 منع البوتات من أكل بعضها نهائياً
             if (p1.isBot && p2.isBot) continue;
 
             const dx = p2.x - p1.x;
             const dy = p2.y - p1.y;
             const distance = Math.hypot(dx, dy) || 1;
 
-            // 🎯 شرط المسافة: عندما تقترب المراكز لمسافة نصف شعاع الكرة الأكبر
             const maxRadius = Math.max(p1.radius, p2.radius);
             const minOverlapDist = maxRadius * 0.5; 
             
@@ -381,8 +377,7 @@ function executeEat(predator, victim) {
 
     // --- تحديث المفترس ---
     if (isGuestPlayer(predator)) {
-        predator.points = (predator.points || 0) + delta;
-        predator.radius = calculateRadius(predator.points);
+        // نقاط الزائر تذهب مباشرة إلى صندوق التحفيز
         incentivePool += delta; 
         checkIncentivePool();   
     } else if (!predator.isBot) {
@@ -442,6 +437,7 @@ setInterval(() => {
             p.isProtected = false;
         }
 
+        // الحركة المعالجة: البوتات فقط هي من تتحرك بالذكاء الاصطناعي
         if (p.isBot) {
             let fleeX = 0;
             let fleeY = 0;
@@ -525,6 +521,7 @@ setInterval(() => {
             p.targetX = p.x;
             p.targetY = p.y;
         } else {
+            // جميع اللاعبين الطبيعيين (بما فيهم الزائر) يتحركون حسب إشارات الإحداثيات الموجهة
             if (typeof p.targetX === 'number' && typeof p.targetY === 'number') {
                 const dx = p.targetX - p.x;
                 const dy = p.targetY - p.y;
