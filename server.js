@@ -340,7 +340,7 @@ wss.on('close', () => {
     clearInterval(pingInterval);
 });
 
-// ⚔️ فحص التصادمات وقواعد الابتلاع الحقيقية
+// ⚔️ فحص التصادمات وقواعد الابتلاع المباشرة (بدون نسب مئوية)
 function checkCollisions() {
     const players = Object.values(activePlayers);
     const count = players.length;
@@ -353,7 +353,7 @@ function checkCollisions() {
 
             if (!p1 || !p2) continue;
             
-            // 🛑 منع الابتلاع إذا كان أحدهما في فترة الحماية (5 ثوانٍ)
+            // 🛑 منع الابتلاع إذا كان أحدهما في فترة الحماية
             if ((p1.isProtected && now < p1.protectedUntil) || (p2.isProtected && now < p2.protectedUntil)) {
                 continue;
             }
@@ -365,12 +365,15 @@ function checkCollisions() {
             const dy = p2.y - p1.y;
             const distance = Math.hypot(dx, dy) || 1;
 
-            const minOverlapDist = Math.max(p1.radius, p2.radius) * 0.75;
+            // 🎯 شرط المسافة: عندما تقترب المراكز لمسافة نصف شعاع الكرة الأكبر
+            const maxRadius = Math.max(p1.radius, p2.radius);
+            const minOverlapDist = maxRadius * 0.5; 
             
             if (distance < minOverlapDist) {
-                if (p1.radius > p2.radius * 1.05) {
+                // 🎯 شرط المفترس: الأكبر نقاطاً يبتلع الأصغر مباشرة بدون شروط نسبة 5%
+                if ((p1.points || 0) > (p2.points || 0)) {
                     executeEat(p1, p2);
-                } else if (p2.radius > p1.radius * 1.05) {
+                } else if ((p2.points || 0) > (p1.points || 0)) {
                     executeEat(p2, p1);
                 }
             }
@@ -460,7 +463,7 @@ setInterval(() => {
                 const dy = other.y - p.y;
                 const dist = Math.hypot(dx, dy);
 
-                if (other.radius > p.radius * 1.05) {
+                if ((other.points || 0) > (p.points || 0)) {
                     const safeDistance = p.radius + other.radius + 500;
                     if (dist < safeDistance && dist > 0) {
                         dangerFound = true;
@@ -469,7 +472,7 @@ setInterval(() => {
                         fleeY -= (dy / dist) * force;
                     }
                 } 
-                else if (p.radius > other.radius * 1.05 && !other.isProtected) {
+                else if ((p.points || 0) > (other.points || 0) && !other.isProtected) {
                     const huntDistance = 800;
                     if (dist < huntDistance && dist > 0) {
                         targetFound = true;
