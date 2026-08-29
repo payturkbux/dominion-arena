@@ -187,34 +187,29 @@ async function loadOfflinePlayersToStands() {
     }
 }
 
+// 🛠️ دالة التحديث الآمن الآني المعالجة (Atomic RPC + Instant Memory Update)
 async function updatePointsSafely(userId, delta) {
     if (!supabase || !userId || userId.startsWith('guest_') || userId.startsWith('bot_')) return;
+    
+    // 1. تحديث الذاكرة المحلية فوراً لضمان سرعة الاستجابة في الرسوميات
+    if (activePlayers[userId]) {
+        activePlayers[userId].points = Math.max(0, (activePlayers[userId].points || 0) + delta);
+        activePlayers[userId].radius = calculateRadius(activePlayers[userId].points);
+    } else if (standVault[userId]) {
+        standVault[userId].points = Math.max(0, (standVault[userId].points || 0) + delta);
+        standVault[userId].radius = calculateRadius(standVault[userId].points);
+    }
+
+    // 2. التحديث الذري المستقر في Supabase
     try {
-        const { data, error } = await supabase
-            .from('profiles')
-            .select('points_balance')
-            .eq('id', userId)
-            .single();
+        const { error } = await supabase.rpc('change_user_points', {
+            user_id: userId,
+            delta: delta
+        });
 
-        if (error || !data) return;
-
-        const currentDbBalance = Number(data.points_balance || 0);
-        const newBalance = Math.max(0, currentDbBalance + delta);
-
-        await supabase
-            .from('profiles')
-            .update({ points_balance: newBalance })
-            .eq('id', userId);
-
-        if (activePlayers[userId]) {
-            activePlayers[userId].points = newBalance;
-            activePlayers[userId].radius = calculateRadius(newBalance);
-        } else if (standVault[userId]) {
-            standVault[userId].points = newBalance;
-            standVault[userId].radius = calculateRadius(newBalance);
-        }
+        if (error) console.error("خطأ RPC في Supabase:", error.message);
     } catch (e) {
-        console.error("فشل التحديث الآمن لقاعدة البيانات:", e);
+        console.error("فشل اتصال تحديث الرصيد بقاعدة البيانات:", e);
     }
 }
 
@@ -380,26 +375,32 @@ function checkCollisions() {
     }
 }
 
+// ⚡ تنفيذ عملية الابتلاع وتحديث النقاط المباشر
 function executeEat(predator, victim) {
     const delta = 1;
 
-    predator.points = (predator.points || 0) + delta;
-    predator.radius = calculateRadius(predator.points);
-
+    // --- تحديث المفترس ---
     if (isGuestPlayer(predator)) {
+        predator.points = (predator.points || 0) + delta;
+        predator.radius = calculateRadius(predator.points);
         incentivePool += delta; 
         checkIncentivePool();   
     } else if (!predator.isBot) {
         updatePointsSafely(predator.id, delta);
+    } else {
+        predator.points = (predator.points || 0) + delta;
+        predator.radius = calculateRadius(predator.points);
     }
 
-    victim.points = Math.max(0, (victim.points || 0) - delta);
-    victim.radius = calculateRadius(victim.points);
-
+    // --- تحديث الضحية ---
     if (!victim.isBot && !isGuestPlayer(victim)) {
         updatePointsSafely(victim.id, -delta);
+    } else {
+        victim.points = Math.max(0, (victim.points || 0) - delta);
+        victim.radius = calculateRadius(victim.points);
     }
 
+    // --- خروج/إعادة توجيه الضحية ---
     if (victim.points <= 0 || victim.isBot) {
         if (victim.isBot) {
             delete activePlayers[victim.id];

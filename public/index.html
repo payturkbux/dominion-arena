@@ -328,7 +328,6 @@
     }
 
     function updatePhysics() {
-        // تحديث تأثيرات الابتلاع
         for (let i = eatEffects.length - 1; i >= 0; i--) {
             const fx = eatEffects[i];
             fx.radius += 4;
@@ -434,12 +433,10 @@
         }
     }, { passive: true });
 
-    // 🎯 تحويل إحداثيات الشاشة إلى إحداثيات الساحة الكبرى المطلقة
     function sendTarget(clientX, clientY) {
         const me = activePlayers[currentUserId];
         if (!me) return;
 
-        // حساب الإحداثيات بالنسبة لمركز الكاميرا الحالي
         const worldX = me.x + (clientX - screenWidth / 2) / camera.zoom;
         const worldY = me.y + (clientY - screenHeight / 2) / camera.zoom;
 
@@ -609,7 +606,6 @@
         const themeColor = countryLandmarks[countryCode]?.color || "#00f5ff";
         const isProtected = p.protectedUntil && (p.protectedUntil > Date.now());
 
-        // 🛡️ رسم درع الحماية عند نزول الكرة الميدان (مدة 5 ثوانٍ)
         if (isProtected) {
             ctx.beginPath();
             ctx.arc(0, 0, radius + 14, 0, Math.PI * 2);
