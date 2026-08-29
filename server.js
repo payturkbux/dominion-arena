@@ -21,7 +21,7 @@ if (SUPABASE_URL && SUPABASE_KEY) {
 // 🏛️ أبعاد الساحة الكبرى الفعلية
 const PITCH_BOUNDS = { minX: 0, maxX: 14000, minY: 0, maxY: 8000 };
 
-let incentivePool = 0;
+let incentivePool = 100; // قيمة ابتدائية لصندوق التحفيز
 
 const STAND_LOCATIONS = {
     "SY": { x: 3500,  y: -500,  width: 2500, height: 400, edge: 'TOP' },
@@ -118,32 +118,56 @@ function getStandTotals() {
     return totals;
 }
 
-function spawnBot(botId) {
+// 🤖 إنشاء البوتات الابتدائية
+function spawnBot(botId, initialPoints = 5) {
     const randomName = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
     const randomCountry = COUNTRIES[Math.floor(Math.random() * COUNTRIES.length)];
     
-    const randomInitialPoints = Math.floor(Math.random() * 15);
-    const radius = calculateRadius(randomInitialPoints);
+    const radius = calculateRadius(initialPoints);
     const pos = getRandomOnPitchPosition(radius);
 
     activePlayers[botId] = {
         id: botId,
         isBot: true,
         name: randomName,
-        points: randomInitialPoints,
+        points: initialPoints,
         eatenPool: 0,
         tier: 'Gold',
         country: getCountryInfo(randomCountry),
         x: pos.x,
         y: pos.y,
-        angle: Math.random() * Math.PI * 2, // 🧭 زاوية اتجاه البوت الابتدائية
-        changeTimer: Math.floor(Math.random() * 60) + 30, // مؤقت الانحراف
+        angle: Math.random() * Math.PI * 2,
+        changeTimer: Math.floor(Math.random() * 60) + 30,
         radius: radius
     };
 }
 
-for (let i = 1; i <= 18; i++) {
-    spawnBot(`bot_${i}`);
+for (let i = 1; i <= 15; i++) {
+    spawnBot(`bot_${i}`, 5);
+}
+
+// 📈 ربط نقاط وحجم البوتات بصندوق التحفيز بتدرج متناسب
+function adjustBotsToIncentivePool() {
+    const bots = Object.values(activePlayers).filter(p => p.isBot);
+    if (bots.length === 0) return;
+
+    let targetTotal = Math.max(15, incentivePool); // ضمان حد أدنى لنقاط البوتات
+    const numBots = bots.length;
+
+    // مصفوفة أوزان متدرجة (البوت الأول يكون كبيراً والبقية تتدرج تنازلياً)
+    let weights = [];
+    let weightSum = 0;
+    for (let i = 0; i < numBots; i++) {
+        let w = Math.pow(0.75, i); 
+        weights.push(w);
+        weightSum += w;
+    }
+
+    bots.forEach((bot, idx) => {
+        let allocatedPoints = Math.max(1, Math.floor((weights[idx] / weightSum) * targetTotal));
+        bot.points = allocatedPoints;
+        bot.radius = calculateRadius(allocatedPoints);
+    });
 }
 
 async function loadOfflinePlayersToStands() {
@@ -235,14 +259,16 @@ wss.on('connection', async (ws, req) => {
         profileData = data;
     }
 
-    const balance = Number(profileData?.points_balance || 0);
+    // 🎯 الزائر يبدأ بـ 10 نقاط والمستخدم المسجل بحسب رصيده
+    const isGuest = socketId.startsWith('guest_');
+    const balance = isGuest ? 10 : Number(profileData?.points_balance || 0);
     const country = profileData?.country_code || selectedCountry;
     const initRadius = calculateRadius(balance);
     const initialSpawn = getRandomOnPitchPosition(initRadius);
 
     let player = standVault[socketId] || {
         id: socketId,
-        name: profileData?.display_name || profileData?.username || (socketId.startsWith('guest_') ? `زائر_${socketId.slice(-4)}` : 'لاعب'),
+        name: profileData?.display_name || profileData?.username || (isGuest ? `زائر_${socketId.slice(-4)}` : 'لاعب'),
         points: balance,
         tier: profileData?.tier || 'Bronze',
         country: getCountryInfo(country),
@@ -273,7 +299,10 @@ wss.on('connection', async (ws, req) => {
                 if (standVault[socketId]) {
                     let p = standVault[socketId];
                     delete standVault[socketId];
-                    
+
+                    if (isGuestPlayer(p)) p.points = 10; // إعادة تعيين نقاط الزائر لـ 10 عند العودة
+                    p.radius = calculateRadius(p.points);
+
                     const spawnPos = getRandomOnPitchPosition(p.radius || 60);
                     
                     p.inStand = false;
@@ -323,6 +352,7 @@ wss.on('close', () => {
     clearInterval(pingInterval);
 });
 
+// ⚔️ فحص التصادمات بناءً على الحجم والواقعية
 function checkCollisions() {
     const players = Object.values(activePlayers);
     const count = players.length;
@@ -339,20 +369,14 @@ function checkCollisions() {
             const distance = Math.hypot(dx, dy) || 1;
 
             const maxRadius = Math.max(p1.radius, p2.radius);
+            
+            // تحقق الابتلاع عند التداخل القريب
             if (distance < maxRadius * 0.75) {
-                const p1Guest = isGuestPlayer(p1);
-                const p2Guest = isGuestPlayer(p2);
-
-                if (p1Guest && !p2Guest) {
+                // 🌟 جعل الابتلاع معتمداً كلياً على الحجم لجميع الكرات
+                if (p1.radius > p2.radius * 1.05) {
                     executeEat(p1, p2);
                 } 
-                else if (p2Guest && !p1Guest) {
-                    executeEat(p2, p1);
-                }
-                else if (p1.radius > p2.radius) {
-                    executeEat(p1, p2);
-                } 
-                else if (p2.radius > p1.radius) {
+                else if (p2.radius > p1.radius * 1.05) {
                     executeEat(p2, p1);
                 }
             }
@@ -361,16 +385,18 @@ function checkCollisions() {
 }
 
 function executeEat(predator, victim) {
+    const stolenPoints = Math.max(1, Math.floor(victim.points * 0.5) || 1);
+
     if (predator.isBot) {
         predator.eatenPool = (predator.eatenPool || 0) + 1;
-        predator.points += 2;
+        predator.points += stolenPoints;
         predator.radius = calculateRadius(predator.points);
     } else if (isGuestPlayer(predator)) {
-        // 🚀 نمو كرة الزائر وزيادة نصف قطرها عند الابتلاع
-        predator.points = (predator.points || 0) + 1;
+        // نمو الزائر وتحديث صندوق التحفيز
+        predator.points = (predator.points || 0) + stolenPoints;
         predator.radius = calculateRadius(predator.points);
 
-        incentivePool += 1;
+        incentivePool += stolenPoints;
 
         let realUsers = Object.values(activePlayers).filter(p => !isGuestPlayer(p) && !p.isBot && p.id !== victim.id);
         realUsers.sort((a, b) => a.points - b.points);
@@ -391,20 +417,20 @@ function executeEat(predator, victim) {
             }
         }
     } else {
-        predator.points += 1;
+        predator.points += stolenPoints;
         predator.radius = calculateRadius(predator.points);
-        updatePointsSafely(predator.id, 1);
+        updatePointsSafely(predator.id, stolenPoints);
     }
 
     if (victim.isBot) {
         const botId = victim.id;
         delete activePlayers[botId];
-        setTimeout(() => spawnBot(botId), 3000); 
+        setTimeout(() => spawnBot(botId, 5), 3000); 
     } else {
-        victim.points = Math.max(0, victim.points - 1);
+        victim.points = Math.max(0, victim.points - stolenPoints);
         victim.radius = calculateRadius(victim.points);
 
-        updatePointsSafely(victim.id, -1);
+        updatePointsSafely(victim.id, -stolenPoints);
 
         delete activePlayers[victim.id];
         victim.inStand = true;
@@ -431,14 +457,16 @@ function executeEat(predator, victim) {
 
 // 🎯 حلقة التحديث الرئيسية (30 FPS)
 setInterval(() => {
+    // تحديث أوزان وأحجام البوتات بالنسبة لصندوق التحفيز
+    adjustBotsToIncentivePool();
+
     Object.values(activePlayers).forEach(p => {
         const r = p.radius || 60;
 
         if (p.isBot) {
-            // 🤖 معالجة حركة البوت بشكل انسيابي وطبيعي
+            // 🤖 حركة البوتات الانسيابية
             p.changeTimer--;
             if (p.changeTimer <= 0) {
-                // تدوير الزاوية قليلاً وبشكل عشوائي
                 p.angle += (Math.random() - 0.5) * 0.8; 
                 p.changeTimer = Math.floor(Math.random() * 40) + 20;
             }
@@ -447,7 +475,7 @@ setInterval(() => {
             p.x += Math.cos(p.angle) * botSpeed;
             p.y += Math.sin(p.angle) * botSpeed;
 
-            // 🛡️ انحراف طبيعي عند الوصول للحدود
+            // 🛡️ انحراف عند الوصول للحدود
             if (p.x <= PITCH_BOUNDS.minX + r) {
                 p.x = PITCH_BOUNDS.minX + r;
                 p.angle = Math.PI - p.angle;
@@ -467,7 +495,7 @@ setInterval(() => {
             p.targetX = p.x;
             p.targetY = p.y;
         } else {
-            // 🕹️ حركة اللاعب الحقيقي بناء على الماوس / اللمس
+            // 🕹️ حركة اللاعب الحقيقي
             if (typeof p.targetX === 'number' && typeof p.targetY === 'number') {
                 const dx = p.targetX - p.x;
                 const dy = p.targetY - p.y;
@@ -479,7 +507,6 @@ setInterval(() => {
                     p.y += dy * speedFactor;
                 }
 
-                // حظر خروج اللاعب خارج الحدود
                 p.x = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, p.x));
                 p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, p.y));
             }
@@ -493,7 +520,7 @@ setInterval(() => {
         activePlayers,
         standVault,
         standLocations: STAND_LOCATIONS,
-        standTotals: getStandTotals(), // 📊 إرسال مجاميع أرصدة المدرجات
+        standTotals: getStandTotals(),
         incentivePool: incentivePool
     });
 
