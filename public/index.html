@@ -215,7 +215,7 @@
             return;
         }
 
-        const energyToTransfer = 10;
+        const energyToTransfer = 1;
 
         me.points -= energyToTransfer;
         userWalletBalance += energyToTransfer;
@@ -225,7 +225,7 @@
         if (supabaseClient && !currentUserId.startsWith('guest_')) {
             const { error } = await supabaseClient
                 .from('profiles')
-                .update({ points_balance: userWalletBalance })
+                .update({ points_balance: userWalletBalance, pwr: me.points })
                 .eq('id', currentUserId);
 
             if (error) {
@@ -263,7 +263,7 @@
         if (supabaseClient && !currentUserId.startsWith('guest_')) {
             const { error } = await supabaseClient
                 .from('profiles')
-                .update({ points_balance: userWalletBalance })
+                .update({ points_balance: userWalletBalance, pwr: me.points })
                 .eq('id', currentUserId);
 
             if (error) {
@@ -383,7 +383,7 @@
                         Object.keys(data.activePlayers || {}).forEach(id => {
                             const pData = data.activePlayers[id];
                             if (!activePlayers[id]) {
-                                const initialPoints = (id === currentUserId) ? 0 : (pData.points || 0);
+                                const initialPoints = Number(pData.points) || 0;
                                 activePlayers[id] = { 
                                     ...pData, 
                                     x: pData.x, 
@@ -399,10 +399,8 @@
                                 }
                                 activePlayers[id].targetX = pData.x;
                                 activePlayers[id].targetY = pData.y;
-                                if (id !== currentUserId) {
-                                    activePlayers[id].points = pData.points;
-                                    activePlayers[id].radius = calculateRadius(pData.points);
-                                }
+                                activePlayers[id].points = Number(pData.points) || 0;
+                                activePlayers[id].radius = calculateRadius(pData.points);
                                 activePlayers[id].isProtected = pData.isProtected;
                                 activePlayers[id].protectedUntil = pData.protectedUntil;
                                 activePlayers[id].name = pData.name;
@@ -494,7 +492,7 @@
         try {
             const { data, error } = await supabaseClient
                 .from('profiles')
-                .select('id, display_name, username, points_balance, tier, country_code')
+                .select('id, display_name, username, points_balance, pwr, tier, country_code')
                 .eq('id', uid)
                 .maybeSingle();
 
@@ -728,10 +726,9 @@
         const themeColor = countryLandmarks[countryCode]?.color || "#00f5ff";
         const isProtected = p.protectedUntil && (p.protectedUntil > Date.now());
 
-        // 🌟 هالة الكرة (مربوطة مباشرة بقوة الكرة PWR)
         const power = Number(p.points || 0);
-        const auraMultiplier = 1.25 + Math.min(1.2, Math.pow(power, 0.42) * 0.06); // يتسع المدى كلما زادت الطاقة
-        const auraAlpha = Math.min(0.85, 0.35 + Math.min(0.5, power / 1000));     // يزداد التوهج والشفافية مع الطاقة
+        const auraMultiplier = 1.25 + Math.min(1.2, Math.pow(power, 0.42) * 0.06);
+        const auraAlpha = Math.min(0.85, 0.35 + Math.min(0.5, power / 1000));
         const auraRadius = radius * auraMultiplier;
 
         ctx.save();

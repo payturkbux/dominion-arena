@@ -183,7 +183,7 @@ async function loadOfflinePlayersToStands() {
     try {
         const { data: users, error } = await supabase
             .from('profiles')
-            .select('id, display_name, username, points_balance, tier, country_code')
+            .select('id, display_name, username, points_balance, pwr, tier, country_code')
             .limit(100);
 
         if (users && !error) {
@@ -193,7 +193,7 @@ async function loadOfflinePlayersToStands() {
                 standVault[u.id] = {
                     id: u.id,
                     name: u.display_name || u.username || 'لاعب',
-                    points: 0,
+                    points: Number(u.pwr) || 0,
                     tier: u.tier || 'Bronze',
                     inStand: true,
                     country: getCountryInfo(country)
@@ -207,18 +207,24 @@ async function loadOfflinePlayersToStands() {
     }
 }
 
-async function updateDatabaseBalanceSafely(userId, newBalance) {
+async function updateDatabaseBalanceSafely(userId, newBalance, pwr) {
     if (!supabase || !userId || userId.startsWith('guest_') || userId.startsWith('bot_')) return;
 
     try {
+        const updateObj = {};
+        if (newBalance !== undefined && newBalance !== null) updateObj.points_balance = newBalance;
+        if (pwr !== undefined && pwr !== null) updateObj.pwr = pwr;
+
+        if (Object.keys(updateObj).length === 0) return;
+
         const { error } = await supabase
             .from('profiles')
-            .update({ points_balance: newBalance })
+            .update(updateObj)
             .eq('id', userId);
 
-        if (error) console.error("خطأ تحديث المحفظة في Supabase:", error.message);
+        if (error) console.error("خطأ تحديث المحفظة/الطاقة في Supabase:", error.message);
     } catch (e) {
-        console.error("فشل اتصال تحديث الرصيد بقاعدة البيانات:", e);
+        console.error("فشل اتصال تحديث قاعدة البيانات:", e);
     }
 }
 
@@ -260,25 +266,29 @@ wss.on('connection', async (ws, req) => {
 
     if (!player) {
         const country = profileData?.country_code || selectedCountry;
-        const initialSpawn = getRandomOnPitchPosition(60);
+        const initialPwr = Number(profileData?.pwr) || 0;
+        const initialSpawn = getRandomOnPitchPosition(calculateRadius(initialPwr));
 
         player = {
             id: socketId,
             name: profileData?.display_name || profileData?.username || (isGuest ? `زائر_${socketId.slice(-4)}` : 'لاعب'),
-            points: 0,
+            points: initialPwr,
             tier: profileData?.tier || 'Bronze',
             country: getCountryInfo(country),
             x: initialSpawn.x,
             y: initialSpawn.y,
             targetX: initialSpawn.x,
             targetY: initialSpawn.y,
-            radius: calculateRadius(0),
+            radius: calculateRadius(initialPwr),
             isProtected: true,
             protectedUntil: Date.now() + 5000
         };
     } else {
-        // الحفاظ على نقاط وموقع اللاعب عند إعادة الاتصال أو تحديث الصفحة
-        player.points = player.points || 0;
+        if (profileData && profileData.pwr !== undefined && profileData.pwr !== null && !isGuest) {
+            player.points = Number(profileData.pwr) || 0;
+        } else {
+            player.points = player.points || 0;
+        }
         player.radius = calculateRadius(player.points);
 
         if (typeof player.x !== 'number' || typeof player.y !== 'number') {
@@ -318,7 +328,7 @@ wss.on('connection', async (ws, req) => {
                     player.radius = calculateRadius(player.points);
 
                     userWallets[socketId] = (userWallets[socketId] || 0) + actualTransfer;
-                    updateDatabaseBalanceSafely(socketId, userWallets[socketId]);
+                    updateDatabaseBalanceSafely(socketId, userWallets[socketId], player.points);
 
                     ws.send(JSON.stringify({
                         type: 'WALLET_UPDATE',
@@ -332,10 +342,10 @@ wss.on('connection', async (ws, req) => {
 
                 if (player && currentBalance >= amount) {
                     userWallets[socketId] = currentBalance - amount;
-                    updateDatabaseBalanceSafely(socketId, userWallets[socketId]);
-
                     player.points = (player.points || 0) + amount;
                     player.radius = calculateRadius(player.points);
+
+                    updateDatabaseBalanceSafely(socketId, userWallets[socketId], player.points);
 
                     ws.send(JSON.stringify({
                         type: 'WALLET_UPDATE',
@@ -361,6 +371,8 @@ wss.on('connection', async (ws, req) => {
                     p.protectedUntil = Date.now() + 5000;
                     
                     activePlayers[socketId] = p;
+
+                    updateDatabaseBalanceSafely(socketId, undefined, 0);
                 }
             } else if (data.type === 'TARGET') {
                 const current = activePlayers[socketId];
@@ -406,6 +418,10 @@ wss.on('connection', async (ws, req) => {
 
             disconnectedPlayer.inStand = true;
             standVault[socketId] = disconnectedPlayer;
+
+            if (!isGuestPlayer(disconnectedPlayer) && !disconnectedPlayer.isBot) {
+                updateDatabaseBalanceSafely(socketId, userWallets[socketId], disconnectedPlayer.points);
+            }
         }
     });
 });
@@ -473,6 +489,14 @@ function executeEat(predator, victim) {
 
     victim.points = Math.max(0, (victim.points || 0) - delta);
     victim.radius = calculateRadius(victim.points);
+
+    if (!isGuestPlayer(predator) && !predator.isBot) {
+        updateDatabaseBalanceSafely(predator.id, undefined, predator.points);
+    }
+
+    if (!isGuestPlayer(victim) && !victim.isBot) {
+        updateDatabaseBalanceSafely(victim.id, undefined, victim.points);
+    }
 
     if (victim.points <= 0) {
         delete activePlayers[victim.id];
