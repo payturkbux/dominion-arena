@@ -73,18 +73,64 @@
             </div>
         </div>
 
-        <!-- أزرار التحكم بالتحفيز والبوتات -->
-        <div class="glass-panel p-6 rounded-3xl space-y-4">
-            <h2 class="text-base font-bold text-amber-300 flex items-center gap-2">
-                <span>🤖</span> التحكم الفوري بالساحة
-            </h2>
-            <div class="flex flex-wrap gap-4">
-                <button onclick="sendAdminAction('SPAWN_BOT')" class="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold py-3 px-6 rounded-2xl text-xs transition shadow-lg active:scale-95">
-                    ➕ إضافة بوت للساحة فوراً
-                </button>
-                <button onclick="sendAdminAction('CLEAR_BOTS')" class="flex-1 bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white font-bold py-3 px-6 rounded-2xl text-xs transition shadow-lg active:scale-95">
+        <!-- أزرار التحكم الفوري بالبوتات والزوار -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            
+            <!-- لوحة التحكم بالبوتات -->
+            <div class="glass-panel p-6 rounded-3xl space-y-4">
+                <h2 class="text-base font-bold text-amber-300 flex items-center gap-2">
+                    <span>🤖</span> التحكم بالبوتات
+                </h2>
+                <div class="flex gap-2">
+                    <input type="number" id="botCountInput" value="1" min="1" max="20" placeholder="العدد" class="w-1/3 p-3 bg-gray-900 border border-white/20 rounded-xl text-center text-sm font-bold">
+                    <input type="number" id="botPointsInput" value="10" min="1" placeholder="النقاط" class="w-1/3 p-3 bg-gray-900 border border-white/20 rounded-xl text-center text-sm font-bold">
+                    <button onclick="spawnCustomBots()" class="w-1/3 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold p-3 rounded-xl text-xs transition shadow-lg active:scale-95">
+                        ➕ إضافة
+                    </button>
+                </div>
+                <button onclick="sendAdminAction('CLEAR_BOTS')" class="w-full bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white font-bold py-3 px-6 rounded-xl text-xs transition shadow-lg active:scale-95">
                     🗑️ طرد كل البوتات من الساحة
                 </button>
+            </div>
+
+            <!-- لوحة التحكم برصيد الزوار -->
+            <div class="glass-panel p-6 rounded-3xl space-y-4">
+                <h2 class="text-base font-bold text-amber-300 flex items-center gap-2">
+                    <span>💵</span> تعديل رصيد الزوار
+                </h2>
+                <div class="flex gap-2">
+                    <input type="number" id="globalGuestPointsInput" value="10" min="1" placeholder="الرصيد الجديد" class="w-2/3 p-3 bg-gray-900 border border-white/20 rounded-xl text-center text-sm font-bold">
+                    <button onclick="setAllGuestsPoints()" class="w-1/3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black p-3 rounded-xl text-xs transition shadow-lg active:scale-95">
+                        تعديل للجميع
+                    </button>
+                </div>
+                <p class="text-xs text-gray-400">سيتم تطبيق الرصيد الجديد على الزوار النشطين والجدد عند الدخول.</p>
+            </div>
+
+        </div>
+
+        <!-- قائمة الزوار النشطين لتعديل أرصدتهم فردياً -->
+        <div class="glass-panel p-6 rounded-3xl space-y-4">
+            <h2 class="text-base font-bold text-amber-300 flex items-center gap-2">
+                <span>👤</span> الزوار النشطون حالياً في الساحة
+            </h2>
+            <div class="overflow-x-auto rounded-2xl border border-white/10">
+                <table class="w-full text-xs text-right">
+                    <thead class="bg-amber-500/20 text-amber-300 font-bold border-b border-amber-500/30">
+                        <tr>
+                            <th class="p-4">المعرف</th>
+                            <th class="p-4">اسم الزائر</th>
+                            <th class="p-4">الدولة</th>
+                            <th class="p-4">الرصيد الحالي</th>
+                            <th class="p-4">إجراء</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admGuestsTable" class="divide-y divide-white/5">
+                        <tr>
+                            <td colspan="5" class="p-4 text-center text-gray-500">لا يوجد زوار متصلون الآن</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 
@@ -175,7 +221,7 @@
     function updateDashboard(syncData) {
         const players = Object.values(syncData.activePlayers || {});
         const bots = players.filter(p => p.isBot);
-        const guests = players.filter(p => String(p.id).startsWith('guest_'));
+        const guests = players.filter(p => String(p.id).startsWith('guest_') && !p.isBot);
         const totalGuestPoints = guests.reduce((acc, g) => acc + Number(g.points || 0), 0);
 
         document.getElementById('admActivePlayers').innerText = players.length;
@@ -184,6 +230,29 @@
         document.getElementById('admBotCount').innerText = bots.length;
         document.getElementById('admIncentivePool').innerText = `${syncData.incentivePool || 0} / 10`;
 
+        // تحديث جدول الزوار
+        const guestsTable = document.getElementById('admGuestsTable');
+        if (guestsTable) {
+            if (guests.length === 0) {
+                guestsTable.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-500">لا يوجد زوار متصلون الآن</td></tr>`;
+            } else {
+                guestsTable.innerHTML = guests.map(g => `
+                    <tr class="hover:bg-white/5 transition">
+                        <td class="p-4 font-mono text-cyan-400">${g.id}</td>
+                        <td class="p-4 font-bold text-white">${g.name}</td>
+                        <td class="p-4">${g.country?.flag || '🚩'} ${g.country?.code || 'SY'}</td>
+                        <td class="p-4 font-mono font-bold text-amber-400">${(g.points || 0).toLocaleString()} $</td>
+                        <td class="p-4">
+                            <button onclick="setSingleGuestPoints('${g.id}')" class="bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 font-bold px-3 py-1.5 rounded-lg border border-amber-500/40 transition">
+                                تعديل الرصيد
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        }
+
+        // تحديث جدول المدرجات
         const table = document.getElementById('admCountriesTable');
         if (table && syncData.standTotals) {
             table.innerHTML = Object.keys(syncData.standTotals).map(code => {
@@ -204,13 +273,35 @@
         }
     }
 
-    function sendAdminAction(actionName) {
+    function sendAdminAction(actionName, extraData = {}) {
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
                 type: 'ADMIN_ACTION',
                 action: actionName,
-                adminKey: adminSecretKey
+                adminKey: adminSecretKey,
+                ...extraData
             }));
+        }
+    }
+
+    function spawnCustomBots() {
+        const count = parseInt(document.getElementById('botCountInput').value) || 1;
+        const points = parseInt(document.getElementById('botPointsInput').value) || 10;
+        sendAdminAction('SPAWN_BOT', { count, points });
+    }
+
+    function setAllGuestsPoints() {
+        const points = parseInt(document.getElementById('globalGuestPointsInput').value) || 10;
+        sendAdminAction('SET_GUEST_POINTS', { points });
+    }
+
+    function setSingleGuestPoints(guestId) {
+        const newPts = prompt("أدخل الرصيد الجديد لهذا الزائر:", "100");
+        if (newPts !== null && !isNaN(parseInt(newPts))) {
+            sendAdminAction('SET_GUEST_POINTS', { 
+                targetGuestId: guestId, 
+                points: parseInt(newPts) 
+            });
         }
     }
 </script>
