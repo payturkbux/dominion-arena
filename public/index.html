@@ -161,7 +161,6 @@
         const container = document.getElementById('toastContainer');
         if (!container) return;
 
-        // إزالة أي رسالة ومضة سابقة على الفور لضمان بقاء الشاشة نظيفة
         container.innerHTML = '';
 
         const toast = document.createElement('div');
@@ -175,7 +174,6 @@
         
         container.appendChild(toast);
 
-        // إزالة العنصر من المخطط بعد إتمام انيميشن الومضة (2 ثانية)
         setTimeout(() => {
             if (toast && toast.parentNode) {
                 toast.remove();
@@ -229,6 +227,25 @@
     let currentUserProfile = null;
     let selectedCountryCode = 'SY'; 
     let currentUserId = localStorage.getItem('dominion_user_id') || `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
+
+    // ✨ أنظمة المبيعات والمؤثرات البصرية الاحترافية
+    let foodPellets = [];
+    let eatEffects = [];
+    const MAX_FOOD_PELLETS = 350;
+
+    // توليد كرات النقاط المنتشرة في الملعب
+    function spawnFoodPellets() {
+        while (foodPellets.length < MAX_FOOD_PELLETS) {
+            foodPellets.push({
+                x: Math.random() * (PITCH_BOUNDS.maxX - 400) + 200,
+                y: Math.random() * (PITCH_BOUNDS.maxY - 400) + 200,
+                radius: Math.floor(Math.random() * 12) + 14,
+                value: Math.floor(Math.random() * 5) + 1,
+                color: `hsl(${Math.floor(Math.random() * 360)}, 100%, 65%)`
+            });
+        }
+    }
+    spawnFoodPellets();
 
     function calculateRadius(points) {
         const val = Math.max(0, Number(points) || 0);
@@ -382,8 +399,20 @@
         document.getElementById('respawnOverlay').classList.add('hidden');
     }
 
+    function triggerEatEffect(x, y, color, scale = 1) {
+        eatEffects.push({
+            x: x,
+            y: y,
+            radius: 10 * scale,
+            maxRadius: 100 * scale,
+            color: color || '#00f5ff',
+            alpha: 1.0
+        });
+    }
+
     function processEatenLogic(eater, eaten) {
         const stolenPoints = Number(eaten.points || 0);
+        triggerEatEffect(eaten.x, eaten.y, countryLandmarks[eater.country?.code]?.color || '#ff0055', 2.5);
 
         if (isGuestPlayer(eater)) {
             const incentiveBonus = Math.floor(stolenPoints * 0.5);
@@ -442,7 +471,20 @@
             const r = p.radius || 60;
             p.x = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, p.x));
             p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, p.y));
+
+            // ⚡ التهام كرات النقاط الزاحفة من قبل اللاعبين
+            for (let i = foodPellets.length - 1; i >= 0; i--) {
+                const food = foodPellets[i];
+                if (Math.hypot(p.x - food.x, p.y - food.y) < r) {
+                    p.points += food.value;
+                    p.radius = calculateRadius(p.points);
+                    triggerEatEffect(food.x, food.y, food.color, 0.5);
+                    foodPellets.splice(i, 1);
+                }
+            }
         });
+
+        spawnFoodPellets();
 
         const playerList = Object.values(activePlayers);
         for (let i = 0; i < playerList.length; i++) {
@@ -465,6 +507,16 @@
                         processEatenLogic(p2, p1);
                     }
                 }
+            }
+        }
+
+        // تحديث تأثيرات الابتلاع والاندماج
+        for (let i = eatEffects.length - 1; i >= 0; i--) {
+            const fx = eatEffects[i];
+            fx.radius += 4;
+            fx.alpha -= 0.04;
+            if (fx.alpha <= 0 || fx.radius >= fx.maxRadius) {
+                eatEffects.splice(i, 1);
             }
         }
     }
@@ -719,6 +771,36 @@
         ctx.beginPath(); ctx.arc(centerX, centerY, 1000, 0, Math.PI * 2); ctx.stroke();
     }
 
+    // رسم النقاط والكرات الصغيرة
+    function drawFoodPellets() {
+        foodPellets.forEach(food => {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(food.x, food.y, food.radius, 0, Math.PI * 2);
+            ctx.fillStyle = food.color;
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = food.color;
+            ctx.fill();
+            ctx.restore();
+        });
+    }
+
+    // رسم المؤثرات البصرية للابتلاع والتموج
+    function drawEatEffects() {
+        eatEffects.forEach(fx => {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(fx.x, fx.y, fx.radius, 0, Math.PI * 2);
+            ctx.strokeStyle = fx.color;
+            ctx.lineWidth = 6;
+            ctx.globalAlpha = fx.alpha;
+            ctx.shadowBlur = 15;
+            ctx.shadowColor = fx.color;
+            ctx.stroke();
+            ctx.restore();
+        });
+    }
+
     function drawOrb(p) {
         if (!p || typeof p.x !== 'number' || typeof p.y !== 'number') return;
         
@@ -787,6 +869,8 @@
 
         drawStadiumPitch();
         drawStands();
+        drawFoodPellets();
+        drawEatEffects();
 
         Object.values(standVault).forEach(p => drawOrb(p));
         Object.values(activePlayers).forEach(p => drawOrb(p));
