@@ -14,7 +14,7 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
-            touch-action: pan-x pan-y;
+            touch-action: none;
             -webkit-user-select: none;
             user-select: none;
             font-family: 'Tajawal', sans-serif;
@@ -38,7 +38,7 @@
 </head>
 <body class="text-white relative w-screen h-screen select-none overflow-hidden">
 
-    <!-- 🚩 نافذة اختيار الدولة البارزة عند الدخول -->
+    <!-- 🚩 نافذة اختيار الدولة -->
     <div id="countrySelectModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
         <div class="glass-hud p-6 sm:p-8 rounded-3xl w-full max-w-md border border-cyan-500/50 text-center shadow-2xl space-y-5">
             <div class="text-5xl">🚩</div>
@@ -65,7 +65,7 @@
         <div class="glass-hud p-8 rounded-3xl w-full max-w-md border border-red-500/50 text-center shadow-2xl space-y-5">
             <div class="text-6xl">💥</div>
             <h2 class="text-2xl font-black text-red-400">تم ابتلاع كرتك!</h2>
-            <p id="respawnText" class="text-sm text-gray-300 leading-relaxed">لقد خسرت نقطة واحدة وتم إخراجك إلى المدرجات.</p>
+            <p id="respawnText" class="text-sm text-gray-300 leading-relaxed">لقد خسرت نقاطك وتم إرجاعك للميدان.</p>
             <button onclick="requestReentry()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold py-3.5 rounded-2xl text-sm shadow-xl active:scale-95 transition">
                 ⚡ إعادة النزول للميدان الآن
             </button>
@@ -75,8 +75,8 @@
     <header class="absolute top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 glass-hud px-4 py-2 rounded-2xl shadow-2xl border border-cyan-500/30 max-w-[90vw]">
         <span class="text-xl">⚔️</span>
         <div class="truncate">
-            <div id="hudStatusTitle" class="text-[9px] sm:text-[10px] uppercase text-cyan-400 font-bold tracking-widest truncate">الساحة الكبرى - ميدان التفاعل الحي</div>
-            <div id="hudActionTip" class="text-[11px] font-bold text-emerald-400 truncate">المس الشاشة أو حرّك الماوس للتوجيه داخل الحدود</div>
+            <div id="hudStatusTitle" class="text-[9px] sm:text-[10px] uppercase text-cyan-400 font-bold tracking-widest truncate">الساحة الكبرى - نظام تحفيز الضعفاء</div>
+            <div id="hudActionTip" class="text-[11px] font-bold text-emerald-400 truncate">نظام الابتلاع والتوزيع التلقائي نشط</div>
         </div>
     </header>
 
@@ -192,9 +192,8 @@
     window.addEventListener('resize', resize);
     resize();
 
-    // 🏟️ أبعاد الساحة المضاعفة رسميًا
+    // 🏟️ أبعاد الساحة
     const PITCH_BOUNDS = { minX: 0, maxX: 14000, minY: 0, maxY: 8000 };
-
     const centerX = (PITCH_BOUNDS.maxX + PITCH_BOUNDS.minX) / 2;
     const centerY = (PITCH_BOUNDS.maxY + PITCH_BOUNDS.minY) / 2;
 
@@ -204,7 +203,8 @@
 
     let activePlayers = {};
     let standVault = {};
-    let standLocations = {}; // تخزين إحداثيات المدرجات القادمة من السيرفر
+    let standLocations = {};
+    let localTargetPos = { x: centerX, y: centerY };
 
     let currentUserProfile = null;
     let selectedCountryCode = 'SY'; 
@@ -213,7 +213,7 @@
     function calculateRadius(points) {
         const val = Math.max(0, Number(points) || 0);
         const calculatedRadius = 30 + Math.pow(val / 10, 0.55);
-        return Math.min(800, Math.max(30, calculatedRadius));
+        return Math.min(1200, Math.max(30, calculatedRadius)); // رفع الحد الأعلى لتمكين الزائر من النمو
     }
 
     const monumentImages = {};
@@ -231,11 +231,63 @@
         monumentImages[code] = img;
     });
 
+    function isGuestPlayer(player) {
+        return !player || player.id.startsWith('guest_') || player.isGuest === true;
+    }
+
+    function initLocalBotsIfEmpty() {
+        if (Object.keys(activePlayers).length > 0) return;
+        
+        if (!activePlayers[currentUserId]) {
+            activePlayers[currentUserId] = {
+                id: currentUserId,
+                name: currentUserId.startsWith('guest_') ? "الزائر (أنت)" : "مستخدم",
+                isGuest: currentUserId.startsWith('guest_'),
+                x: centerX,
+                y: centerY,
+                targetX: centerX,
+                targetY: centerY,
+                points: 200,
+                radius: calculateRadius(200),
+                country: { code: selectedCountryCode, flag: countryLandmarks[selectedCountryCode].flag }
+            };
+        }
+
+        const botCountries = ["SY", "SA", "TR", "EG", "AE"];
+        for (let i = 1; i <= 8; i++) {
+            const botId = `user_real_${i}`;
+            const rx = Math.random() * (PITCH_BOUNDS.maxX - 1000) + 500;
+            const ry = Math.random() * (PITCH_BOUNDS.maxY - 1000) + 500;
+            const cCode = botCountries[i % botCountries.length];
+            const botPts = Math.floor(Math.random() * 500) + 100;
+
+            activePlayers[botId] = {
+                id: botId,
+                name: `مستخدم حقيقي ${i}`,
+                isGuest: false,
+                x: rx,
+                y: ry,
+                targetX: rx,
+                targetY: ry,
+                points: botPts,
+                radius: calculateRadius(botPts),
+                country: { code: cCode, flag: countryLandmarks[cCode].flag }
+            };
+        }
+    }
+
     function confirmCountryAndStart() {
         const dropdown = document.getElementById('countrySelectDropdown');
         if (dropdown) selectedCountryCode = dropdown.value;
         document.getElementById('countrySelectModal').classList.add('hidden');
+
+        canvas.requestPointerLock = canvas.requestPointerLock || canvas.mozRequestPointerLock;
+        if (canvas.requestPointerLock) {
+            canvas.onclick = () => canvas.requestPointerLock();
+        }
+
         setupWebSocket();
+        initLocalBotsIfEmpty();
     }
 
     function setupWebSocket() {
@@ -243,41 +295,153 @@
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
         const wsUrl = `${protocol}//${window.location.host}?userId=${currentUserId}&country=${selectedCountryCode}`;
         
-        socket = new WebSocket(wsUrl);
+        try {
+            socket = new WebSocket(wsUrl);
+            socket.onopen = () => console.log("تم الاتصال بالسيرفر.");
 
-        socket.onopen = () => console.log("تم الاتصال بالسيرفر.");
+            socket.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'INIT') {
+                        currentUserId = data.selfId;
+                        if (data.standLocations) standLocations = data.standLocations;
+                    } else if (data.type === 'SYNC') {
+                        Object.keys(data.activePlayers || {}).forEach(id => {
+                            const pData = data.activePlayers[id];
+                            if (!activePlayers[id]) {
+                                activePlayers[id] = { ...pData, targetX: pData.x, targetY: pData.y };
+                            } else {
+                                activePlayers[id].targetX = pData.x;
+                                activePlayers[id].targetY = pData.y;
+                                activePlayers[id].points = pData.points;
+                                activePlayers[id].radius = calculateRadius(pData.points);
+                            }
+                        });
 
-        socket.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.type === 'INIT') {
-                    currentUserId = data.selfId;
-                    if (data.standLocations) standLocations = data.standLocations;
-                } else if (data.type === 'SYNC') {
-                    activePlayers = data.activePlayers || {};
-                    standVault = data.standVault || {};
-                    if (data.standLocations) standLocations = data.standLocations;
-                    updateLeaderboard();
-                } else if (data.type === 'EATEN') {
-                    const overlay = document.getElementById('respawnOverlay');
-                    const respawnText = document.getElementById('respawnText');
-                    if (respawnText) {
-                        respawnText.innerText = `ابتلعتك كرة اللاعب (${data.eatenBy})! رصيدك المتبقي: ${data.remainingPoints} $`;
+                        Object.keys(activePlayers).forEach(id => {
+                            if (!data.activePlayers[id] && !id.startsWith('user_real_')) {
+                                delete activePlayers[id];
+                            }
+                        });
+
+                        standVault = data.standVault || {};
+                        if (data.standLocations) standLocations = data.standLocations;
+                        updateLeaderboard();
                     }
-                    if (overlay) overlay.classList.remove('hidden');
-                }
-            } catch (e) {
-                console.error("خطأ WebSocket:", e);
-            }
-        };
+                } catch (e) {}
+            };
 
-        socket.onclose = () => setTimeout(setupWebSocket, 2000);
+            socket.onclose = () => setTimeout(setupWebSocket, 3000);
+        } catch(e) {
+            initLocalBotsIfEmpty();
+        }
     }
 
     function requestReentry() {
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({ type: 'REENTER_ARENA' }));
-            document.getElementById('respawnOverlay').classList.add('hidden');
+        }
+        if (activePlayers[currentUserId]) {
+            activePlayers[currentUserId].points = 100;
+            activePlayers[currentUserId].radius = calculateRadius(100);
+            activePlayers[currentUserId].x = centerX;
+            activePlayers[currentUserId].y = centerY;
+        }
+        document.getElementById('respawnOverlay').classList.add('hidden');
+    }
+
+    // ⚡ إدارة قوانين الابتلاع المخصصة (الزائر ضد المستخدم / مستخدم ضد صديقه)
+    function processEatenLogic(eater, eaten) {
+        const stolenPoints = Number(eaten.points || 0);
+
+        if (isGuestPlayer(eater)) {
+            // 🚩 الحامل هو "الزائر":
+            // 1. تضاف النقاط كاملة أو جزئية لصندوق التحفيز ويتم اقتطاع 50% منها لتشجيع المستخدمين الضعفاء
+            const incentiveBonus = Math.floor(stolenPoints * 0.5);
+            eater.points += stolenPoints; // تمكين كرة الزائر من النمو بلا حدود
+            eater.radius = calculateRadius(eater.points);
+
+            showNotification(`الزائر ابتلع ${eaten.name}! تمت إضافة ${stolenPoints}$ وتمرير 50% (${incentiveBonus}$) لصندوق تحفيز الضعفاء!`, "success");
+
+            // توزيع الـ 50% فوراً على أضعف 3 مستخدمين حقيقيين
+            let realUsers = Object.values(activePlayers).filter(p => !isGuestPlayer(p) && p.id !== eaten.id);
+            realUsers.sort((a, b) => a.points - b.points);
+
+            if (realUsers.length > 0) {
+                const share = Math.floor(incentiveBonus / Math.min(3, realUsers.length));
+                for (let i = 0; i < Math.min(3, realUsers.length); i++) {
+                    realUsers[i].points += share;
+                    realUsers[i].radius = calculateRadius(realUsers[i].points);
+                }
+            }
+        } else {
+            // ⚔️ الحامل هو "مستخدم حقيقي" يبتلع صديقه/مستخدم آخر:
+            // تنتقل النقطة بالكامل من صديقه له فقط دون دخول صندوق التحفيز
+            eater.points += stolenPoints;
+            eater.radius = calculateRadius(eater.points);
+
+            showNotification(`المستخدم ${eater.name} ابتلع صديقه ${eaten.name}! انتقلت +${stolenPoints}$ له مباشرة!`, "error");
+        }
+
+        // إعادة ضبط المهزوم
+        if (eaten.id === currentUserId) {
+            document.getElementById('respawnOverlay').classList.remove('hidden');
+        } else {
+            eaten.points = 50;
+            eaten.radius = calculateRadius(50);
+            eaten.x = Math.random() * (PITCH_BOUNDS.maxX - 1000) + 500;
+            eaten.y = Math.random() * (PITCH_BOUNDS.maxY - 1000) + 500;
+        }
+    }
+
+    function updatePhysics() {
+        const me = activePlayers[currentUserId];
+
+        if (me) {
+            me.targetX = Math.max(PITCH_BOUNDS.minX + me.radius, Math.min(PITCH_BOUNDS.maxX - me.radius, localTargetPos.x));
+            me.targetY = Math.max(PITCH_BOUNDS.minY + me.radius, Math.min(PITCH_BOUNDS.maxY - me.radius, localTargetPos.y));
+        }
+
+        Object.values(activePlayers).forEach(p => {
+            if (p.id.startsWith('user_real_')) {
+                if (!p.targetX || Math.hypot(p.targetX - p.x, p.targetY - p.y) < 50) {
+                    p.targetX = Math.random() * (PITCH_BOUNDS.maxX - 1000) + 500;
+                    p.targetY = Math.random() * (PITCH_BOUNDS.maxY - 1000) + 500;
+                }
+            }
+
+            const lerpFactor = 0.08;
+            p.x += (p.targetX - p.x) * lerpFactor;
+            p.y += (p.targetY - p.y) * lerpFactor;
+
+            const r = p.radius || 30;
+            p.x = Math.max(PITCH_BOUNDS.minX + r, Math.min(PITCH_BOUNDS.maxX - r, p.x));
+            p.y = Math.max(PITCH_BOUNDS.minY + r, Math.min(PITCH_BOUNDS.maxY - r, p.y));
+        });
+
+        const playerList = Object.values(activePlayers);
+        for (let i = 0; i < playerList.length; i++) {
+            for (let j = i + 1; j < playerList.length; j++) {
+                const p1 = playerList[i];
+                const p2 = playerList[j];
+
+                const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+                const r1 = p1.radius || calculateRadius(p1.points);
+                const r2 = p2.radius || calculateRadius(p2.points);
+
+                if (dist < Math.max(r1, r2)) {
+                    // 🌟 الزائر يستطيع ابتلاع أي كرة مهما كان حجمها
+                    if (isGuestPlayer(p1) && !isGuestPlayer(p2)) {
+                        processEatenLogic(p1, p2);
+                    } else if (isGuestPlayer(p2) && !isGuestPlayer(p1)) {
+                        processEatenLogic(p2, p1);
+                    } else if (r1 > r2 * 1.1) {
+                        processEatenLogic(p1, p2);
+                    } else if (r2 > r1 * 1.1) {
+                        processEatenLogic(p2, p1);
+                    }
+                }
+            }
         }
     }
 
@@ -305,64 +469,34 @@
                 currentUserProfile = data;
                 updateAuthUI();
             }
-        } catch (e) {
-            console.error("Fetch profile error:", e);
-        }
+        } catch (e) {}
     }
 
-    function openLoginModal() {
-        document.getElementById('loginModal').classList.remove('hidden');
-        document.getElementById('userEmailInput').focus();
-    }
-
-    function closeLoginModal() {
-        document.getElementById('loginModal').classList.add('hidden');
-        document.getElementById('loginError').classList.add('hidden');
-    }
+    function openLoginModal() { document.getElementById('loginModal').classList.remove('hidden'); }
+    function closeLoginModal() { document.getElementById('loginModal').classList.add('hidden'); }
 
     async function submitLogin() {
-        const emailInput = document.getElementById('userEmailInput');
-        const passwordInput = document.getElementById('userPasswordInput');
+        const email = document.getElementById('userEmailInput').value.trim();
+        const password = document.getElementById('userPasswordInput').value.trim();
         const errorEl = document.getElementById('loginError');
-        const spinner = document.getElementById('loginBtnSpinner');
-        const btnText = document.getElementById('loginBtnText');
 
-        const email = emailInput.value.trim();
-        const password = passwordInput.value.trim();
-
-        errorEl.classList.add('hidden');
-        if (!email || !password) {
-            errorEl.innerText = "يرجى كتابة البريد الإلكتروني وكلمة السر";
-            errorEl.classList.remove('hidden');
-            return;
-        }
-
-        spinner.classList.remove('hidden');
-        btnText.innerText = "جاري التحقق...";
+        if (!email || !password) return;
 
         try {
             const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-            if (error) {
-                errorEl.innerText = "البيانات المدخلة غير صحيحة";
-                errorEl.classList.remove('hidden');
-                showNotification("فشل تسجيل الدخول", "error");
-            } else if (data && data.user) {
+            if (!error && data?.user) {
                 delete activePlayers[currentUserId];
                 currentUserId = data.user.id;
                 localStorage.setItem('dominion_user_id', currentUserId);
-                
                 await fetchUserProfile(currentUserId);
                 showNotification("تم تسجيل الدخول بنجاح!", "success");
                 closeLoginModal();
                 setupWebSocket();
+            } else {
+                errorEl.innerText = "البيانات المدخلة غير صحيحة";
+                errorEl.classList.remove('hidden');
             }
-        } catch (err) {
-            errorEl.innerText = "حدث خطأ أثناء الدخول";
-            errorEl.classList.remove('hidden');
-        } finally {
-            spinner.classList.add('hidden');
-            btnText.innerText = "دخول";
-        }
+        } catch (err) {}
     }
 
     async function submitLogout() {
@@ -371,7 +505,6 @@
         localStorage.removeItem('dominion_user_id');
         currentUserId = `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
         currentUserProfile = null;
-        showNotification("تم تسجيل الخروج", "success");
         updateAuthUI();
         setupWebSocket();
     }
@@ -388,61 +521,39 @@
         return { x: worldX, y: worldY };
     }
 
-    function handlePointerMove(clientX, clientY) {
-        const worldPos = getWorldCoordinates(clientX, clientY);
+    function handlePointerMove(clientX, clientY, movementX = 0, movementY = 0) {
+        if (document.pointerLockElement === canvas) {
+            localTargetPos.x += movementX / camera.zoom;
+            localTargetPos.y += movementY / camera.zoom;
+        } else {
+            const worldPos = getWorldCoordinates(clientX, clientY);
+            localTargetPos.x = worldPos.x;
+            localTargetPos.y = worldPos.y;
+        }
 
-        const clampedX = Math.max(PITCH_BOUNDS.minX, Math.min(PITCH_BOUNDS.maxX, worldPos.x));
-        const clampedY = Math.max(PITCH_BOUNDS.minY, Math.min(PITCH_BOUNDS.maxY, worldPos.y));
+        localTargetPos.x = Math.max(PITCH_BOUNDS.minX, Math.min(PITCH_BOUNDS.maxX, localTargetPos.x));
+        localTargetPos.y = Math.max(PITCH_BOUNDS.minY, Math.min(PITCH_BOUNDS.maxY, localTargetPos.y));
 
         if (socket && socket.readyState === WebSocket.OPEN) {
             socket.send(JSON.stringify({
                 type: 'TARGET',
-                x: clampedX,
-                y: clampedY
+                x: localTargetPos.x,
+                y: localTargetPos.y
             }));
         }
     }
 
     window.addEventListener('mousemove', (e) => {
         if (e.target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
-        handlePointerMove(e.clientX, e.clientY);
+        handlePointerMove(e.clientX, e.clientY, e.movementX, e.movementY);
     });
-
-    let initialPinchDistance = null;
-    let initialTargetZoom = camera.targetZoom;
-
-    function getPinchDistance(touches) {
-        const dx = touches[0].clientX - touches[1].clientX;
-        const dy = touches[0].clientY - touches[1].clientY;
-        return Math.hypot(dx, dy);
-    }
-
-    window.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 2) {
-            initialPinchDistance = getPinchDistance(e.touches);
-            initialTargetZoom = camera.targetZoom;
-        } else if (e.touches.length === 1) {
-            if (e.touches[0].target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
-            handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
-        }
-    }, { passive: true });
 
     window.addEventListener('touchmove', (e) => {
-        if (e.touches.length === 2 && initialPinchDistance) {
-            const currentDistance = getPinchDistance(e.touches);
-            const zoomFactor = currentDistance / initialPinchDistance;
-            camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, initialTargetZoom * zoomFactor));
-        } else if (e.touches.length === 1) {
+        if (e.touches.length === 1) {
             if (e.touches[0].target.closest('header, aside, button, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal')) return;
             handlePointerMove(e.touches[0].clientX, e.touches[0].clientY);
         }
     }, { passive: true });
-
-    window.addEventListener('touchend', (e) => {
-        if (e.touches.length < 2) {
-            initialPinchDistance = null;
-        }
-    });
 
     function updateLeaderboard() {
         const listEl = document.getElementById('leaderboardList');
@@ -472,7 +583,6 @@
         }).join('');
     }
 
-    // 🏟️ دالة رسم المدرجات المحيطة بالساحة
     function drawStands() {
         if (!standLocations) return;
 
@@ -488,8 +598,6 @@
             const themeColor = landmark?.color || "#00f5ff";
 
             ctx.save();
-
-            // 1️⃣ رسم خلفية المدرج بالصورة المحددة للدولة
             if (img && img.complete && img.naturalWidth !== 0) {
                 ctx.globalAlpha = 0.35;
                 ctx.drawImage(img, x, y, w, h);
@@ -499,7 +607,6 @@
                 ctx.fillRect(x, y, w, h);
             }
 
-            // 2️⃣ إطار مضيء ومحدد بحواف واضحة
             ctx.strokeStyle = themeColor;
             ctx.lineWidth = 12;
             ctx.shadowBlur = 25;
@@ -507,17 +614,14 @@
             ctx.strokeRect(x, y, w, h);
             ctx.shadowBlur = 0;
 
-            // 3️⃣ طبقة تعتم دافئة لتباين الكرات داخل المدرج
             ctx.fillStyle = "rgba(0, 0, 0, 0.4)";
             ctx.fillRect(x, y, w, h);
 
-            // 4️⃣ كتابة عنوان واسم المدرج بوضوح
             ctx.fillStyle = "#ffffff";
             ctx.font = "bold 90px 'Tajawal'";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(`${landmark?.flag || ''} مدرج ${landmark?.name || code}`, stand.x, stand.y);
-
             ctx.restore();
         });
     }
@@ -609,6 +713,8 @@
     }
 
     function render() {
+        updatePhysics();
+
         const me = activePlayers[currentUserId] || standVault[currentUserId];
         
         if (me) {
@@ -624,13 +730,9 @@
         ctx.scale(camera.zoom, camera.zoom);
         ctx.translate(-camera.x, -camera.y);
 
-        // 1. رسم ارضية الساحة
         drawStadiumPitch();
-
-        // 2. رسم المدرجات خلف الكرات
         drawStands();
 
-        // 3. رسم الكرات داخل وخارج الساحة
         Object.values(standVault).forEach(p => drawOrb(p));
         Object.values(activePlayers).forEach(p => drawOrb(p));
 
