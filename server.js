@@ -251,6 +251,19 @@ wss.on('connection', async (ws, req) => {
     if (supabase && userId && !userId.startsWith('guest_')) {
         const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle();
         profileData = data;
+        
+        // إنشاء بروفايل في السيرفر إذا لم يكن موجوداً
+        if (!profileData) {
+            const { data: createdProfile } = await supabase.from('profiles').upsert([{
+                id: userId,
+                display_name: `لاعب_${userId.slice(-4)}`,
+                points_balance: 0,
+                pwr: 0,
+                country_code: selectedCountry || 'SY'
+            }]).select().maybeSingle();
+            profileData = createdProfile;
+        }
+
         if (profileData && profileData.points_balance !== undefined) {
             userWallets[socketId] = Number(profileData.points_balance) || 0;
         }

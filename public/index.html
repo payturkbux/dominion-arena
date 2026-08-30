@@ -610,160 +610,262 @@
         } catch (e) {}
     }
 
-    // --- نظام المصادقة والمحفظة ---
-    let isRegisterMode = false;
+// --- نظام المصادقة والمحفظة المعدل ---
+let isRegisterMode = false;
 
-    function openLoginModal() { 
-        document.getElementById('loginModal').classList.remove('hidden'); 
-    }
-
-    function closeLoginModal() { 
-        document.getElementById('loginModal').classList.add('hidden'); 
-    }
-
-    function toggleAuthMode() {
-        isRegisterMode = !isRegisterMode;
-        const modalTitle = document.getElementById('modalTitle');
-        const modalSubTitle = document.getElementById('modalSubTitle');
-        const userNameInput = document.getElementById('userNameInput');
-        const loginBtnText = document.getElementById('loginBtnText');
-        const toggleBtn = document.getElementById('toggleAuthModeBtn');
-        const errorEl = document.getElementById('loginError');
-
-        errorEl.classList.add('hidden');
-
-        if (isRegisterMode) {
-            modalTitle.innerText = "إنشاء حساب جديد";
-            modalSubTitle.innerText = "أنشئ حسابك لبدء تجميع PWR وحفظ محفظتك:";
-            userNameInput.classList.remove('hidden');
-            loginBtnText.innerText = "تسجيل الحساب";
-            toggleBtn.innerText = "لديك حساب بالفعل؟ تسجيل الدخول";
+// استعادة الجلسة تلقائياً عند تحميل الصفحة
+async function initAuthSession() {
+    if (!supabaseClient) return;
+    
+    try {
+        const { data: { session } } = await supabaseClient.auth.getSession();
+        if (session?.user) {
+            currentUserId = session.user.id;
+            localStorage.setItem('dominion_user_id', currentUserId);
+            await fetchUserProfile(currentUserId);
         } else {
-            modalTitle.innerText = "تسجيل الدخول إلى الشبكة";
-            modalSubTitle.innerText = "أدخل بريدك الإلكتروني وكلمة السر المعتمدة:";
-            userNameInput.classList.add('hidden');
-            loginBtnText.innerText = "دخول";
-            toggleBtn.innerText = "ليس لديك حساب؟ إنشاء حساب جديد";
+            const storedId = localStorage.getItem('dominion_user_id');
+            if (storedId && !storedId.startsWith('guest_')) {
+                // إذا انتهت الجلسة تحويل المستخدم لزائر
+                localStorage.removeItem('dominion_user_id');
+                currentUserId = `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
+            }
         }
+    } catch (e) {
+        console.error("خطأ استعادة الجلسة:", e);
+    }
+    updateAuthUI();
+}
+
+// الاستماع لتغيرات حالة المصادقة
+if (supabaseClient) {
+    supabaseClient.auth.onAuthStateChange(async (event, session) => {
+        if (event === 'SIGNED_IN' && session?.user) {
+            currentUserId = session.user.id;
+            localStorage.setItem('dominion_user_id', currentUserId);
+            await fetchUserProfile(currentUserId);
+            setupWebSocket();
+        } else if (event === 'SIGNED_OUT') {
+            currentUserId = `guest_${Math.floor(Math.random() * 89999 + 10000)}`;
+            currentUserProfile = null;
+            userWalletBalance = 0;
+            updateAuthUI();
+            setupWebSocket();
+        }
+    });
+}
+
+function openLoginModal() { 
+    document.getElementById('loginModal').classList.remove('hidden'); 
+}
+
+function closeLoginModal() { 
+    document.getElementById('loginModal').classList.add('hidden'); 
+}
+
+function toggleAuthMode() {
+    isRegisterMode = !isRegisterMode;
+    const modalTitle = document.getElementById('modalTitle');
+    const modalSubTitle = document.getElementById('modalSubTitle');
+    const userNameInput = document.getElementById('userNameInput');
+    const loginBtnText = document.getElementById('loginBtnText');
+    const toggleBtn = document.getElementById('toggleAuthModeBtn');
+    const errorEl = document.getElementById('loginError');
+
+    errorEl.classList.add('hidden');
+
+    if (isRegisterMode) {
+        modalTitle.innerText = "إنشاء حساب جديد";
+        modalSubTitle.innerText = "أنشئ حسابك لبدء تجميع PWR وحفظ محفظتك:";
+        userNameInput.classList.remove('hidden');
+        loginBtnText.innerText = "تسجيل الحساب";
+        toggleBtn.innerText = "لديك حساب بالفعل؟ تسجيل الدخول";
+    } else {
+        modalTitle.innerText = "تسجيل الدخول إلى الشبكة";
+        modalSubTitle.innerText = "أدخل بريدك الإلكتروني وكلمة السر المعتمدة:";
+        userNameInput.classList.add('hidden');
+        loginBtnText.innerText = "دخول";
+        toggleBtn.innerText = "ليس لديك حساب؟ إنشاء حساب جديد";
+    }
+}
+
+async function submitAuth() {
+    if (isRegisterMode) {
+        await submitRegister();
+    } else {
+        await submitLogin();
+    }
+}
+
+async function submitLogin() {
+    const email = document.getElementById('userEmailInput').value.trim();
+    const password = document.getElementById('userPasswordInput').value.trim();
+    const errorEl = document.getElementById('loginError');
+    const spinner = document.getElementById('loginBtnSpinner');
+
+    if (!email || !password) {
+        errorEl.innerText = "يرجى إدخال البريد الإلكتروني وكلمة السر";
+        errorEl.classList.remove('hidden');
+        return;
     }
 
-    async function submitAuth() {
-        if (isRegisterMode) {
-            await submitRegister();
-        } else {
-            await submitLogin();
-        }
-    }
+    spinner.classList.remove('hidden');
+    errorEl.classList.add('hidden');
 
-    async function submitLogin() {
-        const email = document.getElementById('userEmailInput').value.trim();
-        const password = document.getElementById('userPasswordInput').value.trim();
-        const errorEl = document.getElementById('loginError');
-        const spinner = document.getElementById('loginBtnSpinner');
-
-        if (!email || !password) {
-            errorEl.innerText = "يرجى إدخال البريد الإلكتروني وكلمة السر";
+    try {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (error) {
+            errorEl.innerText = error.message === "Invalid login credentials" 
+                ? "البريد الإلكتروني أو كلمة السر غير صحيحة" 
+                : error.message;
             errorEl.classList.remove('hidden');
             return;
         }
 
-        spinner.classList.remove('hidden');
-        errorEl.classList.add('hidden');
+        if (data?.user) {
+            delete activePlayers[currentUserId];
+            currentUserId = data.user.id;
+            localStorage.setItem('dominion_user_id', currentUserId);
+            await fetchUserProfile(currentUserId);
+            showNotification("تم تسجيل الدخول بنجاح!", "success");
+            closeLoginModal();
+            setupWebSocket();
+        }
+    } catch (err) {
+        errorEl.innerText = "حدث خطأ أثناء الاتصال بالشبكة";
+        errorEl.classList.remove('hidden');
+    } finally {
+        spinner.classList.add('hidden');
+    }
+}
 
-        try {
-            const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
-            if (!error && data?.user) {
-                delete activePlayers[currentUserId];
-                currentUserId = data.user.id;
-                localStorage.setItem('dominion_user_id', currentUserId);
-                await fetchUserProfile(currentUserId);
-                showNotification("تم تسجيل الدخول بنجاح!", "success");
-                closeLoginModal();
-                setupWebSocket();
+async function submitRegister() {
+    const name = document.getElementById('userNameInput').value.trim();
+    const email = document.getElementById('userEmailInput').value.trim();
+    const password = document.getElementById('userPasswordInput').value.trim();
+    const errorEl = document.getElementById('loginError');
+    const spinner = document.getElementById('loginBtnSpinner');
+
+    if (!name || !email || !password) {
+        errorEl.innerText = "يرجى تعبئة جميع الحقول المطلوبة";
+        errorEl.classList.remove('hidden');
+        return;
+    }
+
+    if (password.length < 6) {
+        errorEl.innerText = "كلمة السر يجب أن تكون 6 خانات على الأقل";
+        errorEl.classList.remove('hidden');
+        return;
+    }
+
+    spinner.classList.remove('hidden');
+    errorEl.classList.add('hidden');
+
+    try {
+        const { data, error } = await supabaseClient.auth.signUp({
+            email: email,
+            password: password,
+            options: {
+                data: { display_name: name }
+            }
+        });
+
+        if (error) {
+            errorEl.innerText = error.message.includes("already registered") 
+                ? "البريد الإلكتروني مسجل بالفعل" 
+                : error.message;
+            errorEl.classList.remove('hidden');
+            return;
+        }
+
+        if (data?.user) {
+            // إضافة الملف الشخصي والمحفظة
+            const { error: profileErr } = await supabaseClient
+                .from('profiles')
+                .upsert([{
+                    id: data.user.id,
+                    display_name: name,
+                    username: name,
+                    points_balance: 0,
+                    pwr: 0,
+                    tier: 'Bronze',
+                    country_code: selectedCountryCode || 'SY'
+                }], { onConflict: 'id' });
+
+            if (profileErr) {
+                console.error("تنبيه ملف المستخدم:", profileErr.message);
+            }
+
+            if (!data.session) {
+                showNotification("تم إنشاء الحساب! يرجى تأكيد البريد الإلكتروني للتمكن من الدخول.", "success");
+                toggleAuthMode();
             } else {
-                errorEl.innerText = "البيانات المدخلة غير صحيحة";
-                errorEl.classList.remove('hidden');
-            }
-        } catch (err) {
-            errorEl.innerText = "حدث خطأ أثناء الاتصال";
-            errorEl.classList.remove('hidden');
-        } finally {
-            spinner.classList.add('hidden');
-        }
-    }
-
-    async function submitRegister() {
-        const name = document.getElementById('userNameInput').value.trim();
-        const email = document.getElementById('userEmailInput').value.trim();
-        const password = document.getElementById('userPasswordInput').value.trim();
-        const errorEl = document.getElementById('loginError');
-        const spinner = document.getElementById('loginBtnSpinner');
-
-        if (!name || !email || !password) {
-            errorEl.innerText = "يرجى تعبئة جميع الحقول المطلوبة";
-            errorEl.classList.remove('hidden');
-            return;
-        }
-
-        if (password.length < 6) {
-            errorEl.innerText = "كلمة السر يجب أن تكون 6 خانات على الأقل";
-            errorEl.classList.remove('hidden');
-            return;
-        }
-
-        spinner.classList.remove('hidden');
-        errorEl.classList.add('hidden');
-
-        try {
-            // 1. إنشاء الحساب في Supabase Auth
-            const { data, error } = await supabaseClient.auth.signUp({
-                email: email,
-                password: password,
-                options: {
-                    data: { display_name: name }
-                }
-            });
-
-            if (error) {
-                errorEl.innerText = error.message || "فشل إنشاء الحساب";
-                errorEl.classList.remove('hidden');
-                return;
-            }
-
-            if (data?.user) {
-                // 2. ضمان مطابقة السجل في جدول profiles والمحفظة
-                const { error: profileErr } = await supabaseClient
-                    .from('profiles')
-                    .upsert([{
-                        id: data.user.id,
-                        display_name: name,
-                        username: name,
-                        points_balance: 0,
-                        pwr: 0,
-                        tier: 'Bronze',
-                        country_code: selectedCountryCode || 'SY'
-                    }], { onConflict: 'id' });
-
-                if (profileErr) {
-                    console.error("خطأ ربط المحفظة:", profileErr.message);
-                }
-
                 delete activePlayers[currentUserId];
                 currentUserId = data.user.id;
                 localStorage.setItem('dominion_user_id', currentUserId);
-
                 await fetchUserProfile(currentUserId);
                 showNotification("تم إنشاء الحساب والمحفظة بنجاح!", "success");
                 closeLoginModal();
                 setupWebSocket();
             }
-        } catch (err) {
-            errorEl.innerText = "حدث خطأ غير متوقع أثناء التسجيل";
-            errorEl.classList.remove('hidden');
-        } finally {
-            spinner.classList.add('hidden');
         }
+    } catch (err) {
+        errorEl.innerText = "حدث خطأ غير متوقع أثناء التسجيل";
+        errorEl.classList.remove('hidden');
+    } finally {
+        spinner.classList.add('hidden');
     }
+}
+
+async function fetchUserProfile(uid) {
+    if (!supabaseClient || !uid || uid.startsWith('guest_')) return;
+    try {
+        let { data, error } = await supabaseClient
+            .from('profiles')
+            .select('id, display_name, username, points_balance, pwr, tier, country_code')
+            .eq('id', uid)
+            .maybeSingle();
+
+        // إذا لم يكن السجل موجوداً يتم إنشاؤه تلقائياً
+        if (!data && !error) {
+            const { data: userData } = await supabaseClient.auth.getUser();
+            const fallbackName = userData?.user?.user_metadata?.display_name || 'لاعب';
+            
+            const { data: newProfile } = await supabaseClient
+                .from('profiles')
+                .upsert([{
+                    id: uid,
+                    display_name: fallbackName,
+                    username: fallbackName,
+                    points_balance: 0,
+                    pwr: 0,
+                    tier: 'Bronze',
+                    country_code: selectedCountryCode || 'SY'
+                }])
+                .select()
+                .single();
+            data = newProfile;
+        }
+
+        if (data) { 
+            currentUserProfile = data; 
+            if (data.country_code) {
+                selectedCountryCode = data.country_code;
+                const flagEl = document.getElementById('currentCountryFlag');
+                if (flagEl && countryLandmarks[selectedCountryCode]) {
+                    flagEl.innerText = countryLandmarks[selectedCountryCode].flag;
+                }
+            }
+            userWalletBalance = Number(data.points_balance) || 0;
+            updateAuthUI(); 
+        }
+    } catch (e) {
+        console.error("خطأ جلب بيانات البروفايل:", e);
+    }
+}
+
+// تشغيل الفحص عند الإقلاع بدلاً من الطلب المباشر
+initAuthSession();
 
     async function submitLogout() {
         if (supabaseClient) await supabaseClient.auth.signOut();
