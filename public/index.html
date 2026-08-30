@@ -8,16 +8,29 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Tajawal:wght@500;700;900&display=swap" rel="stylesheet"/>
     <style>
+        :root {
+            --sat: env(safe-area-inset-top, 0px);
+            --sab: env(safe-area-inset-bottom, 0px);
+            --sal: env(safe-area-inset-left, 0px);
+            --sar: env(safe-area-inset-right, 0px);
+        }
         html, body {
             width: 100%; height: 100%; margin: 0; padding: 0;
             overflow: hidden; -webkit-user-select: none; user-select: none;
             font-family: 'Tajawal', sans-serif; background-color: #0c101c;
             touch-action: none;
+            overscroll-behavior: none;
+            -webkit-tap-highlight-color: transparent;
         }
         .glass-hud {
-            background: rgba(10, 14, 23, 0.88);
-            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            background: rgba(10, 14, 23, 0.82);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
             border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+        }
+        .glass-hud-active {
+            background: rgba(16, 24, 39, 0.92);
+            border-color: rgba(6, 182, 212, 0.5);
         }
         @keyframes flashPop {
             0% { transform: translate(-50%, -20px) scale(0.8); opacity: 0; }
@@ -27,74 +40,80 @@
             100% { transform: translate(-50%, -10px) scale(0.9); opacity: 0; }
         }
         .flash-toast { animation: flashPop 2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .sidebar-transition { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease; }
+        .sidebar-transition { transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease; }
+        
+        /* تحسين استجابة العناصر على الهواتف الصغيرة جداً */
+        @media (max-width: 380px) {
+            .mobile-hide-text { display: none !important; }
+            .mobile-compact-padding { padding-left: 0.5rem; padding-right: 0.5rem; }
+        }
     </style>
 </head>
-<body class="text-white relative w-screen h-screen select-none overflow-hidden">
+<body class="text-white relative w-screen h-screen select-none overflow-hidden pt-[var(--sat)] pb-[var(--sab)] pl-[var(--sal)] pr-[var(--sar)]">
 
-    <!-- Header UI (شريط العنوان العلوي مصغر للجوال) -->
-    <header id="mainHeader" class="absolute top-2 sm:top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 sm:gap-3 glass-hud px-2.5 py-1 sm:px-4 sm:py-2 rounded-xl sm:rounded-2xl shadow-2xl border border-cyan-500/30 max-w-[92vw]">
-        <span class="text-sm sm:text-xl">⚡</span>
-        <div class="truncate text-center">
-            <div id="hudStatusTitle" class="text-[8px] sm:text-[10px] uppercase text-cyan-400 font-bold tracking-widest truncate">مستودعات الطاقة الوطنية</div>
-            <div id="hudActionTip" class="text-[10px] sm:text-[11px] font-bold text-emerald-400 truncate">المخزون: <span id="incentivePoolVal" class="text-amber-400 font-mono">0</span> / 10</div>
+    <!-- Header UI (شريط العنوان العلوي مصغر ومخصص للجوال) -->
+    <header id="mainHeader" class="absolute top-[calc(var(--sat)+0.5rem)] left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 sm:gap-3 glass-hud px-3 py-1.5 sm:px-4 sm:py-2 rounded-2xl shadow-2xl border border-cyan-500/30 max-w-[88vw] sm:max-w-md transition-all duration-300">
+        <span class="text-base sm:text-xl animate-pulse">⚡</span>
+        <div class="truncate text-center flex-1">
+            <div id="hudStatusTitle" class="text-[8px] sm:text-[10px] uppercase text-cyan-400 font-black tracking-widest truncate">مستودعات الطاقة الوطنية</div>
+            <div id="hudActionTip" class="text-[10px] sm:text-[11px] font-bold text-emerald-400 truncate">المخزون: <span id="incentivePoolVal" class="text-amber-400 font-mono font-black">0</span> / 10</div>
         </div>
     </header>
 
     <!-- الأزرار العلوية اليمنى (الإعدادات وإخفاء الواجهة) -->
-    <div id="topRightActions" class="absolute top-2 sm:top-4 right-2 sm:right-4 z-40 flex gap-1.5">
-        <button id="toggleUiBtn" onclick="toggleAllUI()" title="إخفاء/إظهار القوائم" class="glass-hud p-1.5 sm:p-2 rounded-lg sm:rounded-xl border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition shadow-2xl text-xs sm:text-sm">
+    <div id="topRightActions" class="absolute top-[calc(var(--sat)+0.5rem)] right-2 sm:right-4 z-40 flex gap-1.5">
+        <button id="toggleUiBtn" onclick="toggleAllUI()" title="إخفاء/إظهار القوائم" class="glass-hud p-2 sm:p-2.5 rounded-xl border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/20 active:scale-90 transition-all shadow-2xl text-xs sm:text-sm flex items-center justify-center min-w-[36px] min-h-[36px]">
             👁️
         </button>
-        <button id="toggleSidebarBtn" onclick="toggleSidebar()" title="قائمة المتصدرين" class="glass-hud p-1.5 sm:p-2 rounded-lg sm:rounded-xl border border-amber-500/40 text-amber-400 hover:bg-amber-500/20 active:scale-95 transition shadow-2xl flex items-center justify-center text-xs sm:text-sm">
+        <button id="toggleSidebarBtn" onclick="toggleSidebar()" title="قائمة المتصدرين" class="glass-hud p-2 sm:p-2.5 rounded-xl border border-amber-500/40 text-amber-400 hover:bg-amber-500/20 active:scale-90 transition-all shadow-2xl flex items-center justify-center text-xs sm:text-sm min-w-[36px] min-h-[36px]">
             <span id="toggleSidebarIcon">🏆</span>
         </button>
     </div>
 
     <!-- الأزرار العلوية اليسرى (الدخول/الدولة) -->
-    <div id="topLeftActions" class="absolute top-2 sm:top-4 left-2 sm:left-4 z-40 flex gap-1.5">
-        <button id="countryBtn" onclick="openCountryModal()" title="تغيير الدولة" class="glass-hud px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl flex items-center gap-1 border border-teal-500/40 text-xs font-bold text-teal-300 hover:bg-teal-500/20 active:scale-95 transition shadow-2xl">
-            <span id="currentCountryFlag">🇸🇾</span>
+    <div id="topLeftActions" class="absolute top-[calc(var(--sat)+0.5rem)] left-2 sm:left-4 z-40 flex gap-1.5">
+        <button id="countryBtn" onclick="openCountryModal()" title="تغيير الدولة" class="glass-hud px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl flex items-center gap-1 border border-teal-500/40 text-xs font-bold text-teal-300 hover:bg-teal-500/20 active:scale-90 transition-all shadow-2xl min-h-[36px]">
+            <span id="currentCountryFlag" class="text-sm">🇸🇾</span>
             <span class="hidden sm:inline">الدولة</span>
         </button>
-        <button id="authBtn" onclick="openLoginModal()" class="glass-hud px-2 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl flex items-center gap-1 border border-cyan-500/40 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 active:scale-95 transition shadow-2xl">
+        <button id="authBtn" onclick="openLoginModal()" class="glass-hud px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl flex items-center gap-1 border border-cyan-500/40 text-xs font-bold text-cyan-300 hover:bg-cyan-500/20 active:scale-90 transition-all shadow-2xl min-h-[36px]">
             <span id="authBtnIcon">🔑</span>
             <span id="authBtnText" class="hidden sm:inline">دخول</span>
         </button>
-        <button id="logoutBtn" onclick="submitLogout()" class="hidden glass-hud px-2 py-1.5 rounded-lg sm:rounded-xl flex items-center gap-1 border border-red-500/40 text-xs font-bold text-red-400 hover:bg-red-500/20 active:scale-95 transition shadow-2xl">
+        <button id="logoutBtn" onclick="submitLogout()" class="hidden glass-hud px-2 py-1.5 rounded-xl flex items-center gap-1 border border-red-500/40 text-xs font-bold text-red-400 hover:bg-red-500/20 active:scale-90 transition-all shadow-2xl min-h-[36px]">
             <span>🚪</span>
         </button>
     </div>
 
-    <!-- لوحة المحفظة والشحن (مصغرة وقابلة للطي على الهواتف) -->
-    <div id="walletHud" class="absolute top-11 sm:top-16 left-2 sm:left-4 z-40 glass-hud p-2 sm:p-3 rounded-xl sm:rounded-2xl border border-cyan-500/40 shadow-2xl flex flex-col gap-1.5 max-w-[150px] sm:max-w-[180px]">
-        <div class="flex items-center justify-between border-b border-cyan-500/20 pb-1">
-            <span class="text-[10px] sm:text-xs text-gray-300 font-bold flex items-center gap-1">💎 المحفظة</span>
-            <button onclick="toggleWalletCollapse()" class="text-[10px] text-gray-400 hover:text-white px-1">➖</button>
+    <!-- لوحة المحفظة والشحن (مصغرة وقابلة للطي وتناسب الهواتف الذكية) -->
+    <div id="walletHud" class="absolute top-[calc(var(--sat)+3.2rem)] left-2 sm:left-4 z-40 glass-hud p-2.5 sm:p-3 rounded-2xl border border-cyan-500/40 shadow-2xl flex flex-col gap-1.5 max-w-[145px] sm:max-w-[180px] transition-all duration-300">
+        <div class="flex items-center justify-between border-b border-cyan-500/20 pb-1 gap-1">
+            <span class="text-[10px] sm:text-xs text-gray-200 font-black flex items-center gap-1 truncate">💎 المحفظة</span>
+            <button onclick="toggleWalletCollapse()" class="text-[10px] text-gray-400 hover:text-white px-1 py-0.5 rounded hover:bg-white/10 active:scale-90 transition">➖</button>
         </div>
-        <div id="walletContent" class="flex flex-col gap-1">
-            <div class="text-center font-mono font-black text-amber-400 text-xs sm:text-sm" id="walletBalanceVal">0 PWR</div>
-            <button onclick="transferEnergyToWallet()" class="w-full bg-emerald-600/80 hover:bg-emerald-500 text-white font-bold py-1 px-1.5 rounded-lg text-[10px] sm:text-xs transition active:scale-95 flex items-center justify-center gap-0.5 border border-emerald-400/30">
+        <div id="walletContent" class="flex flex-col gap-1.5 transition-all">
+            <div class="text-center font-mono font-black text-amber-400 text-xs sm:text-sm tracking-tight" id="walletBalanceVal">0 PWR</div>
+            <button onclick="transferEnergyToWallet()" class="w-full bg-emerald-600/90 hover:bg-emerald-500 text-white font-bold py-1.5 px-1.5 rounded-xl text-[10px] sm:text-xs transition active:scale-95 flex items-center justify-center gap-0.5 border border-emerald-400/40 shadow-lg">
                 📥 سحب للمحفظة (+1)
             </button>
-            <button onclick="chargeOrbFromWallet(1)" class="w-full bg-cyan-600/80 hover:bg-cyan-500 text-white font-bold py-1 px-1.5 rounded-lg text-[10px] sm:text-xs transition active:scale-95 border border-cyan-400/30">
+            <button onclick="chargeOrbFromWallet(1)" class="w-full bg-cyan-600/90 hover:bg-cyan-500 text-white font-bold py-1.5 px-1.5 rounded-xl text-[10px] sm:text-xs transition active:scale-95 border border-cyan-400/40 shadow-lg">
                 ⚡ شحن الكرة (+1)
             </button>
         </div>
     </div>
 
     <!-- نافذة اختيار وتغيير الدولة -->
-    <div id="countrySelectModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-3 sm:p-4">
-        <div class="glass-hud p-5 sm:p-8 rounded-2xl sm:rounded-3xl w-full max-w-sm sm:max-w-md border border-cyan-500/50 text-center shadow-2xl space-y-4">
-            <div class="text-3xl sm:text-5xl">⚡</div>
-            <h2 class="text-xl sm:text-2xl font-black text-cyan-400">اختر مستودعك الوطني</h2>
+    <div id="countrySelectModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
+        <div class="glass-hud p-5 sm:p-8 rounded-3xl w-full max-w-xs sm:max-w-md border border-cyan-500/50 text-center shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div class="text-4xl sm:text-5xl animate-bounce">⚡</div>
+            <h2 class="text-lg sm:text-2xl font-black text-cyan-400">اختر مستودعك الوطني</h2>
             <p class="text-[11px] sm:text-xs text-gray-300 leading-relaxed">اختر علم الدولة التي تريد تمثيلها وشحن مستودع طاقتها في الساحة:</p>
-            <select id="countrySelectDropdown" class="w-full px-3 py-2.5 sm:py-3.5 bg-gray-900 border border-cyan-500/40 rounded-xl sm:rounded-2xl text-white text-xs sm:text-sm font-bold focus:outline-none focus:border-cyan-400 transition cursor-pointer"></select>
-            <div class="flex gap-2">
-                <button onclick="confirmCountryAndStart()" class="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl text-xs sm:text-sm shadow-xl active:scale-95 transition">
+            <select id="countrySelectDropdown" class="w-full px-3 py-3 bg-gray-900/90 border border-cyan-500/50 rounded-2xl text-white text-xs sm:text-sm font-bold focus:outline-none focus:border-cyan-400 transition cursor-pointer shadow-inner"></select>
+            <div class="flex gap-2 pt-1">
+                <button onclick="confirmCountryAndStart()" class="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold py-3 rounded-2xl text-xs sm:text-sm shadow-xl active:scale-95 transition">
                     🚀 تأكيد ودخول الساحة
                 </button>
-                <button onclick="closeCountryModal()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-2.5 sm:py-3.5 rounded-xl sm:rounded-2xl text-xs font-bold transition">
+                <button onclick="closeCountryModal()" class="bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-3 rounded-2xl text-xs font-bold transition active:scale-95">
                     إلغاء
                 </button>
             </div>
@@ -103,55 +122,55 @@
 
     <div id="toastContainer" class="fixed top-12 sm:top-20 left-1/2 z-50 pointer-events-none flex flex-col items-center gap-2 w-full max-w-md px-4"></div>
 
-    <div id="respawnOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-        <div class="glass-hud p-6 sm:p-8 rounded-3xl w-full max-w-md border border-red-500/50 text-center shadow-2xl space-y-4">
-            <div class="text-4xl sm:text-6xl">💥</div>
-            <h2 class="text-xl sm:text-2xl font-black text-red-400">استنفذت طاقتك بالكامل!</h2>
+    <div id="respawnOverlay" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
+        <div class="glass-hud p-6 sm:p-8 rounded-3xl w-full max-w-xs sm:max-w-md border border-red-500/50 text-center shadow-2xl space-y-4">
+            <div class="text-5xl sm:text-6xl animate-pulse">💥</div>
+            <h2 class="text-lg sm:text-2xl font-black text-red-400">استنفذت طاقتك بالكامل!</h2>
             <p id="respawnText" class="text-xs sm:text-sm text-gray-300 leading-relaxed">تم امتصاص باور كرتك بالكامل وإعادتك للنقطة المرجعية.</p>
-            <button onclick="requestReentry()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold py-3 rounded-2xl text-xs sm:text-sm shadow-xl active:scale-95 transition">
+            <button onclick="requestReentry()" class="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold py-3.5 rounded-2xl text-xs sm:text-sm shadow-xl active:scale-95 transition">
                 ⚡ شحن جديد والنزول للميدان
             </button>
         </div>
     </div>
 
     <!-- نافذة تسجيل الدخول -->
-    <div id="loginModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md p-4">
-        <div class="glass-hud p-5 sm:p-6 rounded-2xl sm:rounded-3xl w-full max-w-xs sm:max-w-sm border border-cyan-500/40 text-center shadow-2xl space-y-3">
+    <div id="loginModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+        <div class="glass-hud p-5 sm:p-6 rounded-3xl w-full max-w-xs sm:max-w-sm border border-cyan-500/40 text-center shadow-2xl space-y-3">
             <div class="text-3xl sm:text-4xl">⚡</div>
-            <h3 class="text-base sm:text-lg font-bold text-cyan-400">تسجيل الدخول إلى الشبكة</h3>
+            <h3 class="text-base sm:text-lg font-black text-cyan-400">تسجيل الدخول إلى الشبكة</h3>
             <p class="text-[11px] sm:text-xs text-gray-300 leading-relaxed">أدخل بريدك الإلكتروني وكلمة السر المعتمدة:</p>
             <div class="space-y-2">
-                <input type="email" id="userEmailInput" placeholder="البريد الإلكتروني" class="w-full px-3 py-2 sm:py-3 bg-gray-900/90 border border-cyan-500/30 rounded-xl text-white text-xs text-right font-mono focus:outline-none focus:border-cyan-400 transition">
-                <input type="password" id="userPasswordInput" placeholder="كلمة السر" class="w-full px-3 py-2 sm:py-3 bg-gray-900/90 border border-cyan-500/30 rounded-xl text-white text-xs text-right font-mono focus:outline-none focus:border-cyan-400 transition">
+                <input type="email" id="userEmailInput" placeholder="البريد الإلكتروني" class="w-full px-3 py-2.5 bg-gray-900/90 border border-cyan-500/30 rounded-xl text-white text-xs text-right font-mono focus:outline-none focus:border-cyan-400 transition">
+                <input type="password" id="userPasswordInput" placeholder="كلمة السر" class="w-full px-3 py-2.5 bg-gray-900/90 border border-cyan-500/30 rounded-xl text-white text-xs text-right font-mono focus:outline-none focus:border-cyan-400 transition">
             </div>
-            <div id="loginError" class="hidden text-[11px] text-red-400 font-bold bg-red-950/50 p-2 rounded-lg border border-red-500/30"></div>
-            <div class="flex gap-2">
-                <button id="submitLoginBtn" onclick="submitLogin()" class="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white py-2 sm:py-2.5 rounded-xl text-xs font-bold transition shadow-lg active:scale-95 flex items-center justify-center gap-2">
+            <div id="loginError" class="hidden text-[11px] text-red-400 font-bold bg-red-950/50 p-2 rounded-xl border border-red-500/30"></div>
+            <div class="flex gap-2 pt-1">
+                <button id="submitLoginBtn" onclick="submitLogin()" class="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white py-2.5 rounded-xl text-xs font-bold transition shadow-lg active:scale-95 flex items-center justify-center gap-2">
                     <span id="loginBtnSpinner" class="hidden w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
                     <span id="loginBtnText">دخول</span>
                 </button>
-                <button onclick="closeLoginModal()" class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2 sm:py-2.5 rounded-xl text-xs font-bold transition active:scale-95">إلغاء</button>
+                <button onclick="closeLoginModal()" class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-xl text-xs font-bold transition active:scale-95">إلغاء</button>
             </div>
         </div>
     </div>
 
-    <!-- قائمة المتصدرين (جانبية مصغرة ومناسبة للهواتف) -->
-    <aside id="leaderboardSidebar" class="sidebar-transition absolute top-11 sm:top-16 right-2 sm:right-4 z-30 glass-hud p-3 rounded-xl sm:rounded-2xl w-60 sm:w-80 border border-amber-500/30 shadow-2xl transform translate-x-[120%] opacity-0 pointer-events-none">
+    <!-- قائمة المتصدرين (جانبية مصغرة ومناسبة للهواتف الذكية) -->
+    <aside id="leaderboardSidebar" class="sidebar-transition absolute top-[calc(var(--sat)+3.2rem)] right-2 sm:right-4 z-30 glass-hud p-3 rounded-2xl w-60 sm:w-80 border border-amber-500/30 shadow-2xl transform translate-x-[120%] opacity-0 pointer-events-none max-h-[75vh] overflow-y-auto">
         <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-white/10">
             <div class="flex items-center gap-1.5">
                 <span class="text-base sm:text-xl">🏆</span>
                 <h3 class="font-bold text-xs sm:text-sm text-amber-400">أعلى باوار (Top 5)</h3>
             </div>
-            <button onclick="toggleSidebar()" class="text-xs text-gray-400 hover:text-white">✕ إخفاء</button>
+            <button onclick="toggleSidebar()" class="text-xs text-gray-400 hover:text-white px-1.5 py-0.5 rounded active:scale-90">✕ إخفاء</button>
         </div>
         <ul id="leaderboardList" class="space-y-1.5 text-[11px] sm:text-xs"></ul>
     </aside>
 
-    <canvas id="worldCanvas" class="w-full h-full block cursor-crosshair"></canvas>
+    <canvas id="worldCanvas" class="w-full h-full block cursor-crosshair touch-none"></canvas>
 
 <script>
     const SUPABASE_URL = "https://bwbgfdteocewitdzrysg.supabase.co"; 
-    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3YmdmZHRlb2Nld2l0ZHpyeXNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4NTE2MTMsImV4cCI6MjEwMzQyNzYxM30.C7hId5uF-p_7ibGSs0P7a2yxpOD-Zu4ON-lu7Pivn6k";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ3YmdmZHRlb2Nld2l0ZHpyeXNnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4NTE2MTMsImV4cCI6210MzQyNzYxM30.C7hId5uF-p_7ibGSs0P7a2yxpOD-Zu4ON-lu7Pivn6k";
 
     let supabaseClient = null;
     let socket = null;
@@ -215,9 +234,9 @@
         container.innerHTML = '';
         const toast = document.createElement('div');
         const bgColor = type === 'error' 
-            ? 'bg-red-950/80 border-red-500/60 text-red-200 shadow-red-500/20' 
-            : 'bg-emerald-950/80 border-emerald-500/60 text-emerald-200 shadow-emerald-500/20';
-        toast.className = `flash-toast fixed left-1/2 glass-hud px-4 py-2 rounded-xl border text-xs font-black shadow-2xl flex items-center justify-center gap-1.5 ${bgColor} whitespace-nowrap`;
+            ? 'bg-red-950/90 border-red-500/80 text-red-200 shadow-red-500/30' 
+            : 'bg-emerald-950/90 border-emerald-500/80 text-emerald-200 shadow-emerald-500/30';
+        toast.className = `flash-toast fixed left-1/2 glass-hud px-4 py-2.5 rounded-2xl border text-xs font-black shadow-2xl flex items-center justify-center gap-1.5 ${bgColor} whitespace-nowrap`;
         toast.innerHTML = `<span class="text-sm">${type === 'error' ? '⚡' : '✨'}</span> <span class="leading-none">${message}</span>`;
         container.appendChild(toast);
         setTimeout(() => toast?.parentNode && toast.remove(), 2000);
@@ -665,15 +684,47 @@
         sendTarget(e.clientX, e.clientY);
     });
 
-    /* دمج التحكم باللمس الخاص بشاشات الجوال */
+    /* دمج وتحسين التحكم باللمس الخاص بشاشات الجوال مع دعم التكبير بأصبعين (Pinch-to-Zoom) */
+    let initialPinchDistance = null;
+    let initialZoom = camera.targetZoom;
+
     function handleTouchMove(e) {
         if (e.target.closest('header, aside, button, select, input, #loginModal, #toastContainer, #respawnOverlay, #countrySelectModal, #walletHud')) return;
-        if (e.touches && e.touches.length > 0) {
+        
+        if (e.touches && e.touches.length === 1) {
             sendTarget(e.touches[0].clientX, e.touches[0].clientY);
+        } else if (e.touches && e.touches.length === 2) {
+            // التكبير والتصغير بالقرص باللمس
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            const dist = Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY);
+            
+            if (initialPinchDistance === null) {
+                initialPinchDistance = dist;
+                initialZoom = camera.targetZoom;
+            } else {
+                const factor = dist / initialPinchDistance;
+                camera.targetZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, initialZoom * factor));
+            }
         }
     }
-    window.addEventListener('touchmove', handleTouchMove, { passive: true });
-    window.addEventListener('touchstart', handleTouchMove, { passive: true });
+
+    window.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            initialPinchDistance = null;
+        }
+        handleTouchMove(e);
+    }, { passive: true });
+
+    window.addEventListener('touchmove', (e) => {
+        handleTouchMove(e);
+    }, { passive: true });
+
+    window.addEventListener('touchend', (e) => {
+        if (e.touches.length < 2) {
+            initialPinchDistance = null;
+        }
+    });
 
     function updateLeaderboard() {
         const listEl = document.getElementById('leaderboardList');
@@ -690,7 +741,7 @@
             const points = Number(item.points || 0).toLocaleString();
 
             return `
-                <li class="flex items-center justify-between p-1.5 rounded-lg ${isMe ? 'bg-amber-500/20 border border-amber-500/50' : 'bg-white/5'}">
+                <li class="flex items-center justify-between p-1.5 rounded-xl ${isMe ? 'bg-amber-500/20 border border-amber-500/50' : 'bg-white/5'}">
                     <div class="flex items-center gap-1.5 truncate">
                         <span class="font-bold text-amber-400 w-3 text-center">${index + 1}.</span>
                         <span class="truncate font-bold">${flag} ${name}</span>
