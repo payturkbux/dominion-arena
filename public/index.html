@@ -128,23 +128,33 @@
         </div>
     </div>
 
-    <!-- نافذة تسجيل الدخول -->
+    <!-- نافذة تسجيل الدخول وإنشاء الحساب -->
     <div id="loginModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
         <div class="glass-hud p-5 sm:p-6 rounded-3xl w-full max-w-xs sm:max-w-sm border border-cyan-500/40 text-center shadow-2xl space-y-3">
             <div class="text-3xl sm:text-4xl">⚡</div>
-            <h3 class="text-base sm:text-lg font-black text-cyan-400">تسجيل الدخول إلى الشبكة</h3>
-            <p class="text-[11px] sm:text-xs text-gray-300 leading-relaxed">أدخل بريدك الإلكتروني وكلمة السر المعتمدة:</p>
+            <h3 id="modalTitle" class="text-base sm:text-lg font-black text-cyan-400">تسجيل الدخول إلى الشبكة</h3>
+            <p id="modalSubTitle" class="text-[11px] sm:text-xs text-gray-300 leading-relaxed">أدخل بريدك الإلكتروني وكلمة السر المعتمدة:</p>
+            
             <div class="space-y-2">
+                <input type="text" id="userNameInput" placeholder="الاسم / اسم اللاعب" class="hidden w-full px-3 py-2.5 bg-gray-900/90 border border-cyan-500/30 rounded-xl text-white text-xs text-right font-mono focus:outline-none focus:border-cyan-400 transition">
                 <input type="email" id="userEmailInput" placeholder="البريد الإلكتروني" class="w-full px-3 py-2.5 bg-gray-900/90 border border-cyan-500/30 rounded-xl text-white text-xs text-right font-mono focus:outline-none focus:border-cyan-400 transition">
                 <input type="password" id="userPasswordInput" placeholder="كلمة السر" class="w-full px-3 py-2.5 bg-gray-900/90 border border-cyan-500/30 rounded-xl text-white text-xs text-right font-mono focus:outline-none focus:border-cyan-400 transition">
             </div>
+
             <div id="loginError" class="hidden text-[11px] text-red-400 font-bold bg-red-950/50 p-2 rounded-xl border border-red-500/30"></div>
+
             <div class="flex gap-2 pt-1">
-                <button id="submitLoginBtn" onclick="submitLogin()" class="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white py-2.5 rounded-xl text-xs font-bold transition shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                <button id="submitAuthBtn" onclick="submitAuth()" class="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white py-2.5 rounded-xl text-xs font-bold transition shadow-lg active:scale-95 flex items-center justify-center gap-2">
                     <span id="loginBtnSpinner" class="hidden w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
                     <span id="loginBtnText">دخول</span>
                 </button>
                 <button onclick="closeLoginModal()" class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-2.5 rounded-xl text-xs font-bold transition active:scale-95">إلغاء</button>
+            </div>
+
+            <div class="pt-2 border-t border-white/10">
+                <button id="toggleAuthModeBtn" onclick="toggleAuthMode()" class="text-[11px] text-cyan-400 hover:underline font-bold">
+                    ليس لديك حساب؟ إنشاء حساب جديد
+                </button>
             </div>
         </div>
     </div>
@@ -600,14 +610,65 @@
         } catch (e) {}
     }
 
-    function openLoginModal() { document.getElementById('loginModal').classList.remove('hidden'); }
-    function closeLoginModal() { document.getElementById('loginModal').classList.add('hidden'); }
+    // --- نظام المصادقة والمحفظة ---
+    let isRegisterMode = false;
+
+    function openLoginModal() { 
+        document.getElementById('loginModal').classList.remove('hidden'); 
+    }
+
+    function closeLoginModal() { 
+        document.getElementById('loginModal').classList.add('hidden'); 
+    }
+
+    function toggleAuthMode() {
+        isRegisterMode = !isRegisterMode;
+        const modalTitle = document.getElementById('modalTitle');
+        const modalSubTitle = document.getElementById('modalSubTitle');
+        const userNameInput = document.getElementById('userNameInput');
+        const loginBtnText = document.getElementById('loginBtnText');
+        const toggleBtn = document.getElementById('toggleAuthModeBtn');
+        const errorEl = document.getElementById('loginError');
+
+        errorEl.classList.add('hidden');
+
+        if (isRegisterMode) {
+            modalTitle.innerText = "إنشاء حساب جديد";
+            modalSubTitle.innerText = "أنشئ حسابك لبدء تجميع PWR وحفظ محفظتك:";
+            userNameInput.classList.remove('hidden');
+            loginBtnText.innerText = "تسجيل الحساب";
+            toggleBtn.innerText = "لديك حساب بالفعل؟ تسجيل الدخول";
+        } else {
+            modalTitle.innerText = "تسجيل الدخول إلى الشبكة";
+            modalSubTitle.innerText = "أدخل بريدك الإلكتروني وكلمة السر المعتمدة:";
+            userNameInput.classList.add('hidden');
+            loginBtnText.innerText = "دخول";
+            toggleBtn.innerText = "ليس لديك حساب؟ إنشاء حساب جديد";
+        }
+    }
+
+    async function submitAuth() {
+        if (isRegisterMode) {
+            await submitRegister();
+        } else {
+            await submitLogin();
+        }
+    }
 
     async function submitLogin() {
         const email = document.getElementById('userEmailInput').value.trim();
         const password = document.getElementById('userPasswordInput').value.trim();
         const errorEl = document.getElementById('loginError');
-        if (!email || !password) return;
+        const spinner = document.getElementById('loginBtnSpinner');
+
+        if (!email || !password) {
+            errorEl.innerText = "يرجى إدخال البريد الإلكتروني وكلمة السر";
+            errorEl.classList.remove('hidden');
+            return;
+        }
+
+        spinner.classList.remove('hidden');
+        errorEl.classList.add('hidden');
 
         try {
             const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
@@ -623,7 +684,85 @@
                 errorEl.innerText = "البيانات المدخلة غير صحيحة";
                 errorEl.classList.remove('hidden');
             }
-        } catch (err) {}
+        } catch (err) {
+            errorEl.innerText = "حدث خطأ أثناء الاتصال";
+            errorEl.classList.remove('hidden');
+        } finally {
+            spinner.classList.add('hidden');
+        }
+    }
+
+    async function submitRegister() {
+        const name = document.getElementById('userNameInput').value.trim();
+        const email = document.getElementById('userEmailInput').value.trim();
+        const password = document.getElementById('userPasswordInput').value.trim();
+        const errorEl = document.getElementById('loginError');
+        const spinner = document.getElementById('loginBtnSpinner');
+
+        if (!name || !email || !password) {
+            errorEl.innerText = "يرجى تعبئة جميع الحقول المطلوبة";
+            errorEl.classList.remove('hidden');
+            return;
+        }
+
+        if (password.length < 6) {
+            errorEl.innerText = "كلمة السر يجب أن تكون 6 خانات على الأقل";
+            errorEl.classList.remove('hidden');
+            return;
+        }
+
+        spinner.classList.remove('hidden');
+        errorEl.classList.add('hidden');
+
+        try {
+            // 1. إنشاء الحساب في Supabase Auth
+            const { data, error } = await supabaseClient.auth.signUp({
+                email: email,
+                password: password,
+                options: {
+                    data: { display_name: name }
+                }
+            });
+
+            if (error) {
+                errorEl.innerText = error.message || "فشل إنشاء الحساب";
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            if (data?.user) {
+                // 2. ضمان مطابقة السجل في جدول profiles والمحفظة
+                const { error: profileErr } = await supabaseClient
+                    .from('profiles')
+                    .upsert([{
+                        id: data.user.id,
+                        display_name: name,
+                        username: name,
+                        points_balance: 0,
+                        pwr: 0,
+                        tier: 'Bronze',
+                        country_code: selectedCountryCode || 'SY'
+                    }], { onConflict: 'id' });
+
+                if (profileErr) {
+                    console.error("خطأ ربط المحفظة:", profileErr.message);
+                }
+
+                delete activePlayers[currentUserId];
+                currentUserId = data.user.id;
+                localStorage.setItem('dominion_user_id', currentUserId);
+
+                await fetchUserProfile(currentUserId);
+                showNotification("تم إنشاء الحساب والمحفظة بنجاح!", "success");
+                closeLoginModal();
+                setupWebSocket();
+            }
+        } catch (err) {
+            errorEl.innerText = "حدث خطأ غير متوقع أثناء التسجيل";
+            errorEl.classList.remove('hidden');
+        } finally {
+            spinner.classList.add('hidden');
+        }
     }
 
     async function submitLogout() {
