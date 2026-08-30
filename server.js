@@ -79,8 +79,16 @@ let activePlayers = {};
 let standVault = {};     
 let userWallets = {};
 
+// نظام عمود الدفاع وكبسولات الطاقة الساقطة
+let countryAbsorbedPoints = {};
+let droppedEnergy = {}; 
+let energyCapsuleCounter = 0;
+
 const BOT_NAMES = ['Ghost_Hunter', 'Shadow_King', 'Vortex_99', 'Neon_Blade', 'Zeus_BOY', 'Alpha_Wolf', 'Storm_Rider', 'Titan_X', 'Cyber_Samurai', 'Phantom_Lord', 'Odin_King', 'Valkyrie_X', 'Apex_Predator', 'Blaze_Strike', 'Omega_Prime'];
 const COUNTRIES = Object.keys(COUNTRY_DATA);
+
+// تهيئة مجموع نقاط الابتلاع لكل دولة
+COUNTRIES.forEach(c => countryAbsorbedPoints[c] = 0);
 
 function calculateRadius(points) {
     const val = Math.max(0, Number(points) || 0);
@@ -392,7 +400,7 @@ wss.on('connection', async (ws, req) => {
                     p.targetX = spawnPos.x;
                     p.targetY = spawnPos.y;
                     p.isProtected = true;
-                    p.protectedUntil = Date.now() + 5000;
+                    p.protectedUntil: Date.now() + 5000;
                     
                     activePlayers[socketId] = p;
 
@@ -503,6 +511,109 @@ function checkCollisions() {
             }
         }
     }
+
+    // التحقق من التقاط كبسولات الطاقة الساقطة
+    checkEnergyCapsuleCollisions();
+}
+
+function triggerDefenseTurret(attackerCountry) {
+    const targetTargets = [];
+
+    // إيجاد أضخم كرة لكل دولة من دول الخصوم
+    COUNTRIES.forEach(country => {
+        if (country === attackerCountry) return;
+
+        let maxPlayer = null;
+        Object.values(activePlayers).forEach(p => {
+            if ((p.country?.code || 'SY') === country && (p.points || 0) > 0) {
+                if (!maxPlayer || p.points > maxPlayer.points) {
+                    maxPlayer = p;
+                }
+            }
+        });
+
+        if (maxPlayer) {
+            targetTargets.push(maxPlayer);
+        }
+    });
+
+    const now = Date.now();
+
+    targetTargets.forEach(target => {
+        const stolenPoints = Math.min(target.points, 10);
+        target.points -= stolenPoints;
+        target.radius = calculateRadius(target.points);
+
+        if (!isGuestPlayer(target) && !target.isBot) {
+            updateDatabaseBalanceSafely(target.id, undefined, target.points);
+        }
+
+        // إطلاق 10 كبسولات طاقة منتشرة حول الكرة المستهدفة
+        for (let k = 0; k < stolenPoints; k++) {
+            energyCapsuleCounter++;
+            const capsuleId = `cap_${energyCapsuleCounter}_${now}`;
+            const angle = Math.random() * Math.PI * 2;
+            const dist = target.radius + 150 + Math.random() * 300;
+
+            let capX = target.x + Math.cos(angle) * dist;
+            let capY = target.y + Math.sin(angle) * dist;
+
+            capX = Math.max(PITCH_BOUNDS.minX + 30, Math.min(PITCH_BOUNDS.maxX - 30, capX));
+            capY = Math.max(PITCH_BOUNDS.minY + 30, Math.min(PITCH_BOUNDS.maxY - 30, capY));
+
+            droppedEnergy[capsuleId] = {
+                id: capsuleId,
+                x: capX,
+                y: capY,
+                points: 1,
+                createdAt: now,
+                expiresAt: now + 60000 // تومض وتختفي بعد دقيقة
+            };
+        }
+    });
+
+    // إرسال تنبيه لكافة المتصلين بحدوث إطلاق الشعاع
+    wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+                type: 'DEFENSE_BEAM',
+                country: attackerCountry,
+                targetsCount: targetTargets.length
+            }));
+        }
+    });
+}
+
+function checkEnergyCapsuleCollisions() {
+    const now = Date.now();
+
+    // تنظيف الكبسولات المنتهية الصلاحية
+    Object.keys(droppedEnergy).forEach(cId => {
+        if (now >= droppedEnergy[cId].expiresAt) {
+            delete droppedEnergy[cId];
+        }
+    });
+
+    // التقاط الكبسولات من قبل الكرات الحية
+    Object.values(activePlayers).forEach(player => {
+        const pR = player.radius || 60;
+        Object.values(droppedEnergy).forEach(cap => {
+            const dx = cap.x - player.x;
+            const dy = cap.y - player.y;
+            const dist = Math.hypot(dx, dy);
+
+            if (dist < pR + 30) {
+                player.points += cap.points;
+                player.radius = calculateRadius(player.points);
+
+                if (!isGuestPlayer(player) && !player.isBot) {
+                    updateDatabaseBalanceSafely(player.id, undefined, player.points);
+                }
+
+                delete droppedEnergy[cap.id];
+            }
+        });
+    });
 }
 
 function executeEat(predator, victim) {
@@ -510,6 +621,16 @@ function executeEat(predator, victim) {
 
     predator.points = (predator.points || 0) + delta;
     predator.radius = calculateRadius(predator.points);
+
+    // إضافة النقاط المبتلعة إلى حساب الدولة الخاصة بالكرة المفترسة
+    const predatorCountry = predator.country?.code || 'SY';
+    countryAbsorbedPoints[predatorCountry] = (countryAbsorbedPoints[predatorCountry] || 0) + delta;
+
+    // تفعيل عمود الدفاع عند الوصول إلى 100 نقطة مبتلعة
+    if (countryAbsorbedPoints[predatorCountry] >= 100) {
+        countryAbsorbedPoints[predatorCountry] -= 100;
+        triggerDefenseTurret(predatorCountry);
+    }
 
     victim.points = Math.max(0, (victim.points || 0) - delta);
     victim.radius = calculateRadius(victim.points);
@@ -663,6 +784,8 @@ setInterval(() => {
                 activePlayers,
                 standLocations: STAND_LOCATIONS,
                 standTotals: getStandTotals(),
+                countryAbsorbedPoints: countryAbsorbedPoints,
+                droppedEnergy: droppedEnergy,
                 walletBalance: userWallets[client.id] || 0,
                 incentivePool: incentivePool,
                 incentiveTarget: incentiveTarget
