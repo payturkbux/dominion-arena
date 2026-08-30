@@ -240,7 +240,7 @@ wss.on('connection', async (ws, req) => {
 
     const urlParams = new URLSearchParams(req.url.replace(/^.*\?/, ''));
     const userId = urlParams.get('userId');
-    const selectedCountry = urlParams.get('country') || 'SY';
+    const selectedCountry = urlParams.get('country');
 
     const socketId = (userId && !userId.startsWith('guest_')) 
         ? userId 
@@ -264,8 +264,10 @@ wss.on('connection', async (ws, req) => {
     const isGuest = socketId.startsWith('guest_');
     let player = activePlayers[socketId] || standVault[socketId];
 
+    // تحديد الدولة المختارة (الخيار القادم من الواجهة له الأولوية)
+    const activeCountry = selectedCountry || profileData?.country_code || 'SY';
+
     if (!player) {
-        const country = profileData?.country_code || selectedCountry;
         const initialPwr = Number(profileData?.pwr) || 0;
         const initialSpawn = getRandomOnPitchPosition(calculateRadius(initialPwr));
 
@@ -274,7 +276,7 @@ wss.on('connection', async (ws, req) => {
             name: profileData?.display_name || profileData?.username || (isGuest ? `زائر_${socketId.slice(-4)}` : 'لاعب'),
             points: initialPwr,
             tier: profileData?.tier || 'Bronze',
-            country: getCountryInfo(country),
+            country: getCountryInfo(activeCountry),
             x: initialSpawn.x,
             y: initialSpawn.y,
             targetX: initialSpawn.x,
@@ -284,6 +286,9 @@ wss.on('connection', async (ws, req) => {
             protectedUntil: Date.now() + 5000
         };
     } else {
+        // تحديث دولة اللاعب بالقيمة الجديدة دائماً
+        player.country = getCountryInfo(activeCountry);
+
         if (profileData && profileData.pwr !== undefined && profileData.pwr !== null && !isGuest) {
             player.points = Number(profileData.pwr) || 0;
         } else {
@@ -298,6 +303,17 @@ wss.on('connection', async (ws, req) => {
             player.targetX = initialSpawn.x;
             player.targetY = initialSpawn.y;
         }
+    }
+
+    // حفظ الدولة الجديدة في Supabase للمستخدمين المسجلين
+    if (supabase && !isGuest && selectedCountry) {
+        supabase
+            .from('profiles')
+            .update({ country_code: selectedCountry })
+            .eq('id', socketId)
+            .then(({ error }) => {
+                if (error) console.error("خطأ تحديث الدولة في قاعدة البيانات:", error.message);
+            });
     }
 
     delete standVault[socketId];
