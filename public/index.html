@@ -28,10 +28,6 @@
             border: 1px solid rgba(255, 255, 255, 0.12);
             box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
         }
-        .glass-hud-active {
-            background: rgba(16, 24, 39, 0.92);
-            border-color: rgba(6, 182, 212, 0.5);
-        }
         @keyframes flashPop {
             0% { transform: translate(-50%, -20px) scale(0.8); opacity: 0; }
             15% { transform: translate(-50%, 0) scale(1.05); opacity: 1; }
@@ -42,7 +38,6 @@
         .flash-toast { animation: flashPop 2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
         .sidebar-transition { transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease; }
         
-        /* تحسين استجابة العناصر على الهواتف الصغيرة جداً */
         @media (max-width: 380px) {
             .mobile-hide-text { display: none !important; }
             .mobile-compact-padding { padding-left: 0.5rem; padding-right: 0.5rem; }
@@ -51,7 +46,7 @@
 </head>
 <body class="text-white relative w-screen h-screen select-none overflow-hidden pt-[var(--sat)] pb-[var(--sab)] pl-[var(--sal)] pr-[var(--sar)]">
 
-    <!-- Header UI (شريط العنوان العلوي مصغر ومخصص للجوال) -->
+    <!-- Header UI -->
     <header id="mainHeader" class="absolute top-[calc(var(--sat)+0.5rem)] left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 sm:gap-3 glass-hud px-3 py-1.5 sm:px-4 sm:py-2 rounded-2xl shadow-2xl border border-cyan-500/30 max-w-[88vw] sm:max-w-md transition-all duration-300">
         <span class="text-base sm:text-xl animate-pulse">⚡</span>
         <div class="truncate text-center flex-1">
@@ -60,7 +55,7 @@
         </div>
     </header>
 
-    <!-- الأزرار العلوية اليمنى (الإعدادات وإخفاء الواجهة) -->
+    <!-- الأزرار العلوية اليمنى -->
     <div id="topRightActions" class="absolute top-[calc(var(--sat)+0.5rem)] right-2 sm:right-4 z-40 flex gap-1.5">
         <button id="toggleUiBtn" onclick="toggleAllUI()" title="إخفاء/إظهار القوائم" class="glass-hud p-2 sm:p-2.5 rounded-xl border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/20 active:scale-90 transition-all shadow-2xl text-xs sm:text-sm flex items-center justify-center min-w-[36px] min-h-[36px]">
             👁️
@@ -70,7 +65,7 @@
         </button>
     </div>
 
-    <!-- الأزرار العلوية اليسرى (الدخول/الدولة) -->
+    <!-- الأزرار العلوية اليسرى -->
     <div id="topLeftActions" class="absolute top-[calc(var(--sat)+0.5rem)] left-2 sm:left-4 z-40 flex gap-1.5">
         <button id="countryBtn" onclick="openCountryModal()" title="تغيير الدولة" class="glass-hud px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl flex items-center gap-1 border border-teal-500/40 text-xs font-bold text-teal-300 hover:bg-teal-500/20 active:scale-90 transition-all shadow-2xl min-h-[36px]">
             <span id="currentCountryFlag" class="text-sm">🇸🇾</span>
@@ -85,7 +80,7 @@
         </button>
     </div>
 
-    <!-- لوحة المحفظة والشحن (مصغرة وقابلة للطي وتناسب الهواتف الذكية) -->
+    <!-- لوحة المحفظة والشحن -->
     <div id="walletHud" class="absolute top-[calc(var(--sat)+3.2rem)] left-2 sm:left-4 z-40 glass-hud p-2.5 sm:p-3 rounded-2xl border border-cyan-500/40 shadow-2xl flex flex-col gap-1.5 max-w-[145px] sm:max-w-[180px] transition-all duration-300">
         <div class="flex items-center justify-between border-b border-cyan-500/20 pb-1 gap-1">
             <span class="text-[10px] sm:text-xs text-gray-200 font-black flex items-center gap-1 truncate">💎 المحفظة</span>
@@ -154,7 +149,7 @@
         </div>
     </div>
 
-    <!-- قائمة المتصدرين (جانبية مصغرة ومناسبة للهواتف الذكية) -->
+    <!-- قائمة المتصدرين -->
     <aside id="leaderboardSidebar" class="sidebar-transition absolute top-[calc(var(--sat)+3.2rem)] right-2 sm:right-4 z-30 glass-hud p-3 rounded-2xl w-60 sm:w-80 border border-amber-500/30 shadow-2xl transform translate-x-[120%] opacity-0 pointer-events-none max-h-[75vh] overflow-y-auto">
         <div class="flex items-center justify-between mb-2 pb-1.5 border-b border-white/10">
             <div class="flex items-center gap-1.5">
@@ -250,7 +245,6 @@
         }
 
         const energyToTransfer = 1;
-
         me.points -= energyToTransfer;
         userWalletBalance += energyToTransfer;
         me.radius = calculateRadius(me.points);
@@ -318,7 +312,6 @@
         showNotification(`تم شحن الكرة بـ ⚡ ${amount} PWR!`, "success");
     }
 
-    /* التحكم في ظهور وإخفاء القوائم على شاشة الهاتف */
     let sidebarOpen = false;
     function toggleSidebar() {
         const sidebar = document.getElementById('leaderboardSidebar');
@@ -515,6 +508,11 @@
                         }
                         document.getElementById('respawnOverlay').classList.remove('hidden');
                         showNotification(`تم امتصاص طاقتك بواسطة ${data.eatenBy}`, 'error');
+                    } else if (data.type === 'WALLET_UPDATE') {
+                        if (data.walletBalance !== undefined) {
+                            userWalletBalance = Number(data.walletBalance) || 0;
+                            updateWalletDisplay();
+                        }
                     }
                 } catch (e) {}
             };
@@ -684,7 +682,6 @@
         sendTarget(e.clientX, e.clientY);
     });
 
-    /* دمج وتحسين التحكم باللمس الخاص بشاشات الجوال مع دعم التكبير بأصبعين (Pinch-to-Zoom) */
     let initialPinchDistance = null;
     let initialZoom = camera.targetZoom;
 
@@ -694,7 +691,6 @@
         if (e.touches && e.touches.length === 1) {
             sendTarget(e.touches[0].clientX, e.touches[0].clientY);
         } else if (e.touches && e.touches.length === 2) {
-            // التكبير والتصغير بالقرص باللمس
             const touch1 = e.touches[0];
             const touch2 = e.touches[1];
             const dist = Math.hypot(touch1.clientX - touch2.clientX, touch1.clientY - touch2.clientY);

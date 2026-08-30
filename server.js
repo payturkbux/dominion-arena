@@ -12,7 +12,6 @@ app.use(express.static('public'));
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_KEY;
-
 const ADMIN_SECRET = process.env.ADMIN_SECRET || "Ezkyaa.2012.2013";
 
 let supabase = null;
@@ -263,8 +262,6 @@ wss.on('connection', async (ws, req) => {
 
     const isGuest = socketId.startsWith('guest_');
     let player = activePlayers[socketId] || standVault[socketId];
-
-    // تحديد الدولة المختارة (الخيار القادم من الواجهة له الأولوية)
     const activeCountry = selectedCountry || profileData?.country_code || 'SY';
 
     if (!player) {
@@ -286,7 +283,6 @@ wss.on('connection', async (ws, req) => {
             protectedUntil: Date.now() + 5000
         };
     } else {
-        // تحديث دولة اللاعب بالقيمة الجديدة دائماً
         player.country = getCountryInfo(activeCountry);
 
         if (profileData && profileData.pwr !== undefined && profileData.pwr !== null && !isGuest) {
@@ -305,7 +301,6 @@ wss.on('connection', async (ws, req) => {
         }
     }
 
-    // حفظ الدولة الجديدة في Supabase للمستخدمين المسجلين
     if (supabase && !isGuest && selectedCountry) {
         supabase
             .from('profiles')
