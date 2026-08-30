@@ -1172,41 +1172,41 @@ initAuthSession();
     }
 
     function render() {
-        updatePhysics();
+    updatePhysics();
 
-        Object.values(activePlayers).forEach(p => {
-            if (p.targetX !== undefined && p.targetY !== undefined) {
-                const lerpFactor = (p.id === currentUserId) ? 0.45 : 0.25;
-                p.x += (p.targetX - p.x) * lerpFactor;
-                p.y += (p.targetY - p.y) * lerpFactor;
-            }
-        });
-
-        const dpr = window.devicePixelRatio || 1;
-        const me = activePlayers[currentUserId];
-        if (me) {
-            camera.x += (me.x - camera.x) * 0.1;
-            camera.y += (me.y - camera.y) * 0.1;
+    Object.values(activePlayers).forEach(p => {
+        if (p.targetX !== undefined && p.targetY !== undefined) {
+            // تنعيم موحد لجميع اللاعبين لمنع القفزات المتقطعة
+            p.x += (p.targetX - p.x) * 0.15;
+            p.y += (p.targetY - p.y) * 0.15;
         }
+    });
 
-        camera.zoom += (camera.targetZoom - camera.zoom) * 0.1;
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.save();
-        ctx.scale(dpr, dpr);
-        ctx.translate(screenWidth / 2, screenHeight / 2);
-        ctx.scale(camera.zoom, camera.zoom);
-        ctx.translate(-camera.x, -camera.y);
-
-        drawStadiumPitch();
-        drawStands();
-
-        Object.values(activePlayers).forEach(p => drawOrb(p));
-        drawEatEffects();
-
-        ctx.restore();
-        requestAnimationFrame(render);
+    const dpr = window.devicePixelRatio || 1;
+    const me = activePlayers[currentUserId];
+    if (me) {
+        camera.x += (me.x - camera.x) * 0.1;
+        camera.y += (me.y - camera.y) * 0.1;
     }
+
+    camera.zoom += (camera.targetZoom - camera.zoom) * 0.1;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.translate(screenWidth / 2, screenHeight / 2);
+    ctx.scale(camera.zoom, camera.zoom);
+    ctx.translate(-camera.x, -camera.y);
+
+    drawStadiumPitch();
+    drawStands();
+
+    Object.values(activePlayers).forEach(p => drawOrb(p));
+    drawEatEffects();
+
+    ctx.restore();
+    requestAnimationFrame(render);
+}
 
     if (!currentUserId.startsWith('guest_')) fetchUserProfile(currentUserId);
     updateAuthUI();
