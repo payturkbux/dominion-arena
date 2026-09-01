@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html class="dark" lang="ar" dir="rtl">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Dominion Arena - Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Tajawal:wght@500;700;900&display=swap" rel="stylesheet"/>
+    <style>
+        body { font-family: 'Tajawal', sans-serif; background-color: #070a12; }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+        }
+    </style>
+</head>
+<body class="text-white min-h-screen p-4 sm:p-8">
+
+    <!-- نافذة طلب كلمة سر الإدارة -->
+    <div id="authModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4">
+        <div class="glass-panel p-8 rounded-3xl w-full max-w-md border border-amber-500/50 text-center shadow-2xl space-y-5">
+            <div class="text-5xl">🔐</div>
+            <h2 class="text-2xl font-black text-amber-400">لوحة التحكم الإدارية</h2>
+            <p class="text-xs text-gray-300">أدخل مفتاح الحماية الإداري (Admin Secret Key) للوصول:</p>
+            <input type="password" id="adminSecretInput" placeholder="كلمة سر الإدارة" class="w-full px-4 py-3.5 bg-gray-900 border border-amber-500/40 rounded-2xl text-center text-white text-sm font-bold focus:outline-none focus:border-amber-400 transition">
+            <button onclick="authenticateAdmin()" class="w-full bg-gradient-to-r from-amber-500 to-amber-700 hover:from-amber-400 hover:to-amber-600 text-black font-black py-3.5 rounded-2xl text-sm shadow-xl active:scale-95 transition">
+                تسجيل الدخول للوحة الإدارة
+            </button>
+        </div>
+    </div>
+
+    <!-- المحتوى الرئيسي للوحة التحكم -->
+    <div id="dashboardContent" class="hidden max-w-7xl mx-auto space-y-6">
+        
+        <!-- الشريط العلوي -->
+        <header class="glass-panel p-6 rounded-3xl flex justify-between items-center border-b border-amber-500/30">
+            <div class="flex items-center gap-3">
+                <span class="text-3xl">⚙️</span>
+                <div>
+                    <h1 class="text-xl font-black text-amber-400">مركز إدارة الميدان والساحة الكبرى</h1>
+                    <p class="text-xs text-gray-400">مراقبة حية للمستخدمين، الزوار، البوتات، والمدرجات الـ20</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="connectionStatus" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-950 text-red-400 border border-red-500/30">
+                    <span class="w-2 h-2 rounded-full bg-red-500"></span> غير متصل
+                </span>
+                <button onclick="logoutAdmin()" class="bg-red-600/20 hover:bg-red-600/40 text-red-300 border border-red-500/40 font-bold px-3 py-1.5 rounded-xl text-xs transition active:scale-95 flex items-center gap-1">
+                    🚪 خروج
+                </button>
+            </div>
+        </header>
+
+        <!-- بطاقات الإحصائيات الحية -->
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
+            <div class="glass-panel p-4 rounded-2xl text-center">
+                <div class="text-xs text-gray-400 font-bold mb-1">اللاعبون النشطون</div>
+                <div id="admActivePlayers" class="text-2xl font-black text-cyan-400 font-mono">0</div>
+            </div>
+            <div class="glass-panel p-4 rounded-2xl text-center">
+                <div class="text-xs text-gray-400 font-bold mb-1">الزوار المتواجدون</div>
+                <div id="admGuestCount" class="text-2xl font-black text-blue-400 font-mono">0</div>
+            </div>
+            <div class="glass-panel p-4 rounded-2xl text-center border-amber-500/50">
+                <div class="text-xs text-amber-300 font-bold mb-1">💰 إجمالي رصيد الزوار</div>
+                <div id="admGuestPoints" class="text-2xl font-black text-amber-400 font-mono">0 $</div>
+            </div>
+            <div class="glass-panel p-4 rounded-2xl text-center">
+                <div class="text-xs text-gray-400 font-bold mb-1">عدد البوتات</div>
+                <div id="admBotCount" class="text-2xl font-black text-emerald-400 font-mono">0</div>
+            </div>
+            <div class="glass-panel p-4 rounded-2xl text-center">
+                <div class="text-xs text-gray-400 font-bold mb-1">خزان التحفيز الحالي</div>
+                <div id="admIncentivePool" class="text-2xl font-black text-purple-400 font-mono">0 / 10</div>
+            </div>
+        </div>
+
+        <!-- أزرار التحكم الفوري بالبوتات والزوار وصندوق التحفيز -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- التحكم بالبوتات -->
+            <div class="glass-panel p-6 rounded-3xl space-y-4">
+                <h2 class="text-base font-bold text-amber-300 flex items-center gap-2">
+                    <span>🤖</span> التحكم بالبوتات
+                </h2>
+                <div class="flex gap-2">
+                    <input type="number" id="botCountInput" value="1" min="1" max="20" placeholder="العدد" class="w-1/3 p-3 bg-gray-900 border border-white/20 rounded-xl text-center text-sm font-bold">
+                    <input type="number" id="botPointsInput" value="10" min="1" placeholder="النقاط" class="w-1/3 p-3 bg-gray-900 border border-white/20 rounded-xl text-center text-sm font-bold">
+                    <button onclick="spawnCustomBots()" class="w-1/3 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold p-3 rounded-xl text-xs transition shadow-lg active:scale-95">
+                        ➕ إضافة
+                    </button>
+                </div>
+                <button onclick="sendAdminAction('CLEAR_BOTS')" class="w-full bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white font-bold py-3 px-6 rounded-xl text-xs transition shadow-lg active:scale-95">
+                    🗑️ طرد كل البوتات من الساحة
+                </button>
+            </div>
+
+            <!-- تعديل رصيد الزوار -->
+            <div class="glass-panel p-6 rounded-3xl space-y-4">
+                <h2 class="text-base font-bold text-amber-300 flex items-center gap-2">
+                    <span>💵</span> تعديل رصيد الزوار
+                </h2>
+                <div class="flex gap-2">
+                    <input type="number" id="globalGuestPointsInput" value="10" min="1" placeholder="الرصيد الجديد" class="w-2/3 p-3 bg-gray-900 border border-white/20 rounded-xl text-center text-sm font-bold">
+                    <button onclick="setAllGuestsPoints()" class="w-1/3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black p-3 rounded-xl text-xs transition shadow-lg active:scale-95">
+                        تعديل للجميع
+                    </button>
+                </div>
+                <p class="text-xs text-gray-400">سيتم تطبيق الرصيد الجديد على الزوار النشطين والجدد عند الدخول.</p>
+            </div>
+
+            <!-- قسم التحكم الجديد: صندوق التحفيز -->
+            <div class="glass-panel p-6 rounded-3xl space-y-4 border-purple-500/40">
+                <h2 class="text-base font-bold text-purple-300 flex items-center gap-2">
+                    <span>🎁</span> التحكم بصندوق التحفيز
+                </h2>
+                <div class="space-y-3">
+                    <div class="flex gap-2">
+                        <input type="number" id="incentiveTargetInput" value="10" min="1" placeholder="الهدف (مثلاً 10)" class="w-2/3 p-3 bg-gray-900 border border-purple-500/30 rounded-xl text-center text-sm font-bold text-purple-200">
+                        <button onclick="setIncentiveTarget()" class="w-1/3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold p-3 rounded-xl text-xs transition shadow-lg active:scale-95">
+                            تعيين السعة
+                        </button>
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="number" id="incentivePoolInput" value="0" min="0" placeholder="النقاط الحالية" class="w-2/3 p-3 bg-gray-900 border border-purple-500/30 rounded-xl text-center text-sm font-bold text-purple-200">
+                        <button onclick="setIncentivePool()" class="w-1/3 bg-gradient-to-r from-purple-800 to-purple-900 hover:from-purple-700 hover:to-purple-800 text-purple-200 font-bold p-3 rounded-xl text-xs transition shadow-lg active:scale-95 border border-purple-500/30">
+                            تعديل الرصيد
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- قائمة الزوار -->
+        <div class="glass-panel p-6 rounded-3xl space-y-4">
+            <h2 class="text-base font-bold text-amber-300 flex items-center gap-2">
+                <span>👤</span> الزوار النشطون حالياً في الساحة
+            </h2>
+            <div class="overflow-x-auto rounded-2xl border border-white/10">
+                <table class="w-full text-xs text-right">
+                    <thead class="bg-amber-500/20 text-amber-300 font-bold border-b border-amber-500/30">
+                        <tr>
+                            <th class="p-4">المعرف</th>
+                            <th class="p-4">اسم الزائر</th>
+                            <th class="p-4">الدولة</th>
+                            <th class="p-4">الرصيد الحالي</th>
+                            <th class="p-4">إجراء</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admGuestsTable" class="divide-y divide-white/5">
+                        <tr>
+                            <td colspan="5" class="p-4 text-center text-gray-500">لا يوجد زوار متصلون الآن</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- جدول المدرجات -->
+        <div class="glass-panel p-6 rounded-3xl space-y-4">
+            <h2 class="text-base font-bold text-amber-300 flex items-center gap-2">
+                <span>🏛️</span> حالة المدرجات الـ20 المحيطة بالساحة
+            </h2>
+            <div class="overflow-x-auto rounded-2xl border border-white/10">
+                <table class="w-full text-xs text-right">
+                    <thead class="bg-amber-500/20 text-amber-300 font-bold border-b border-amber-500/30">
+                        <tr>
+                            <th class="p-4">العلم</th>
+                            <th class="p-4">اسم الدولة</th>
+                            <th class="p-4">كود الدولة</th>
+                            <th class="p-4">إجمالي الكتلة والنقاط</th>
+                            <th class="p-4">اللاعبون النشطون بالمدرج</th>
+                        </tr>
+                    </thead>
+                    <tbody id="admCountriesTable" class="divide-y divide-white/5">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+<script>
+    let ws = null;
+    let adminSecretKey = localStorage.getItem('dominion_admin_secret') || "";
+
+    const countryLandmarks = {
+        "SY": { name: "سوريا", flag: "🇸🇾" }, "SA": { name: "السعودية", flag: "🇸🇦" },
+        "TR": { name: "تركيا", flag: "🇹🇷" }, "EG": { name: "مصر", flag: "🇪🇬" },
+        "AE": { name: "الإمارات", flag: "🇦🇪" }, "QA": { name: "قطر", flag: "🇶🇦" },
+        "KW": { name: "الكويت", flag: "🇰🇼" }, "IQ": { name: "العراق", flag: "🇮🇶" },
+        "JO": { name: "الأردن", flag: "🇯🇴" }, "LB": { name: "لبنان", flag: "🇱🇧" },
+        "OM": { name: "عُمان", flag: "🇴🇲" }, "BH": { name: "البحرين", flag: "🇧🇭" },
+        "MA": { name: "المغرب", flag: "🇲🇦" }, "DZ": { name: "الجزائر", flag: "🇩🇿" },
+        "TN": { name: "تونس", flag: "🇹🇳" }, "LY": { name: "ليبيا", flag: "🇱🇾" },
+        "SD": { name: "السودان", flag: "🇸🇩" }, "YE": { name: "اليمن", flag: "🇾🇪" },
+        "PS": { name: "فلسطين", flag: "🇵🇸" }, "US": { name: "أمريكا", flag: "🇺🇸" }
+    };
+
+    if (adminSecretKey) {
+        document.getElementById('authModal').classList.add('hidden');
+        document.getElementById('dashboardContent').classList.remove('hidden');
+        connectWebSocket();
+    }
+
+    function authenticateAdmin() {
+        const inputVal = document.getElementById('adminSecretInput').value.trim();
+        if (!inputVal) return;
+        adminSecretKey = inputVal;
+        localStorage.setItem('dominion_admin_secret', adminSecretKey);
+        document.getElementById('authModal').classList.add('hidden');
+        document.getElementById('dashboardContent').classList.remove('hidden');
+        connectWebSocket();
+    }
+
+    function logoutAdmin() {
+        localStorage.removeItem('dominion_admin_secret');
+        adminSecretKey = "";
+        if (ws) ws.close();
+        document.getElementById('dashboardContent').classList.add('hidden');
+        document.getElementById('authModal').classList.remove('hidden');
+        document.getElementById('adminSecretInput').value = "";
+    }
+
+    function connectWebSocket() {
+        if (ws) ws.close();
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        ws = new WebSocket(`${protocol}//${window.location.host}?userId=admin_dashboard`);
+
+        ws.onopen = () => {
+            const statusEl = document.getElementById('connectionStatus');
+            statusEl.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-950 text-emerald-400 border border-emerald-500/30";
+            statusEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> متصل بالحجم الحي`;
+        };
+
+        ws.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === 'SYNC') {
+                    updateDashboard(data);
+                } else if (data.type === 'ERROR') {
+                    console.error("خطأ من السيرفر:", data.message);
+                    alert("خطأ: " + (data.message || "فشل تنفيذ الأمر"));
+                }
+            } catch (e) {}
+        };
+
+        ws.onclose = () => {
+            const statusEl = document.getElementById('connectionStatus');
+            statusEl.className = "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-950 text-red-400 border border-red-500/30";
+            statusEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-red-500"></span> غير متصل`;
+        };
+    }
+
+    function updateDashboard(syncData) {
+        const players = Object.values(syncData.activePlayers || {});
+        const bots = players.filter(p => p.isBot);
+        const guests = players.filter(p => String(p.id).startsWith('guest_') && !p.isBot);
+        const totalGuestPoints = guests.reduce((acc, g) => acc + Number(g.points || 0), 0);
+        
+        const target = syncData.incentiveTarget || 10;
+        const currentPool = syncData.incentivePool || 0;
+
+        document.getElementById('admActivePlayers').innerText = players.length;
+        document.getElementById('admGuestCount').innerText = guests.length;
+        document.getElementById('admGuestPoints').innerText = `${totalGuestPoints.toLocaleString()} $`;
+        document.getElementById('admBotCount').innerText = bots.length;
+        document.getElementById('admIncentivePool').innerText = `${currentPool} / ${target}`;
+
+        const guestsTable = document.getElementById('admGuestsTable');
+        if (guestsTable) {
+            if (guests.length === 0) {
+                guestsTable.innerHTML = `<tr><td colspan="5" class="p-4 text-center text-gray-500">لا يوجد زوار متصلون الآن</td></tr>`;
+            } else {
+                guestsTable.innerHTML = guests.map(g => `
+                    <tr class="hover:bg-white/5 transition">
+                        <td class="p-4 font-mono text-cyan-400">${g.id}</td>
+                        <td class="p-4 font-bold text-white">${g.name}</td>
+                        <td class="p-4">${g.country?.flag || '🚩'} ${g.country?.code || 'SY'}</td>
+                        <td class="p-4 font-mono font-bold text-amber-400">${(g.points || 0).toLocaleString()} $</td>
+                        <td class="p-4">
+                            <button onclick="setSingleGuestPoints('${g.id}')" class="bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 font-bold px-3 py-1.5 rounded-lg border border-amber-500/40 transition">
+                                تعديل الرصيد
+                            </button>
+                        </td>
+                    </tr>
+                `).join('');
+            }
+        }
+
+        const table = document.getElementById('admCountriesTable');
+        if (table && syncData.standTotals) {
+            table.innerHTML = Object.keys(syncData.standTotals).map(code => {
+                const info = countryLandmarks[code] || { name: code, flag: '🚩' };
+                const totalPts = Number(syncData.standTotals[code] || 0).toLocaleString();
+                const activeInCountry = players.filter(p => p.country?.code === code).length;
+
+                return `
+                    <tr class="hover:bg-white/5 transition">
+                        <td class="p-4 text-xl">${info.flag}</td>
+                        <td class="p-4 font-bold text-white">${info.name}</td>
+                        <td class="p-4 font-mono text-cyan-400">${code}</td>
+                        <td class="p-4 font-mono font-bold text-amber-400 text-sm">${totalPts} $</td>
+                        <td class="p-4 font-mono text-emerald-400 font-bold">${activeInCountry}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    }
+
+    function sendAdminAction(actionName, extraData = {}) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'ADMIN_ACTION',
+                action: actionName,
+                adminKey: adminSecretKey,
+                ...extraData
+            }));
+        } else {
+            alert("غير متصل بالسيرفر!");
+        }
+    }
+
+    function spawnCustomBots() {
+        const count = parseInt(document.getElementById('botCountInput').value) || 1;
+        const points = parseInt(document.getElementById('botPointsInput').value) || 10;
+        sendAdminAction('SPAWN_BOT', { count, points });
+    }
+
+    function setAllGuestsPoints() {
+        const points = parseInt(document.getElementById('globalGuestPointsInput').value) || 10;
+        sendAdminAction('SET_GUEST_POINTS', { points });
+    }
+
+    function setSingleGuestPoints(guestId) {
+        const newPts = prompt("أدخل الرصيد الجديد لهذا الزائر:", "100");
+        if (newPts !== null && !isNaN(parseInt(newPts))) {
+            sendAdminAction('SET_GUEST_POINTS', { 
+                targetGuestId: guestId, 
+                points: parseInt(newPts) 
+            });
+        }
+    }
+
+    function setIncentiveTarget() {
+        const target = parseInt(document.getElementById('incentiveTargetInput').value) || 10;
+        sendAdminAction('SET_INCENTIVE_TARGET', { target });
+    }
+
+    function setIncentivePool() {
+        const points = parseInt(document.getElementById('incentivePoolInput').value) || 0;
+        sendAdminAction('SET_INCENTIVE_POOL', { points });
+    }
+</script>
+</body>
+</html>
